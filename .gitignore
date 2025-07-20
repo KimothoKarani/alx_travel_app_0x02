@@ -1,9 +1,9 @@
 # Python
 __pycache__/
-*.py[cod]
-*.sqlite3
-*.log
-*.env
+.py[cod]
+.sqlite3
+.log
+.env
 
 # macOS / Linux / Windows
 .DS_Store
@@ -13,15 +13,15 @@ Thumbs.db
 venv/
 env/
 alx_venv/
-*.egg-info/
+.egg-info/
 
 # VSCode / PyCharm
 .vscode/
 .idea/
 
 # Django migrations
-*/migrations/*.py
-*/migrations/*.pyc
+/migrations/*.py
+/migrations/*.pyc
 !*/migrations/__init__.py
 
 # Static and media files
