@@ -1,6 +1,5 @@
 # alx_travel_app/listings/management/commands/seed.py
 
-import uuid
 from datetime import timedelta
 import random
 import decimal
@@ -9,7 +8,7 @@ from django.utils import timezone
 from faker import Faker
 
 # Import all models from your listings app
-from listings.models import CustomUser, Property, Booking, Payment, Review, Message
+from alx_travel_app.listings.models import CustomUser, Property, Booking, Payment, Review, Message
 
 fake = Faker()
 
