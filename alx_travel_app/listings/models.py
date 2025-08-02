@@ -1,47 +1,9 @@
 # alx_travel_app/listings/models.py
 
 import uuid
-
-from django.contrib.auth.base_user import BaseUserManager
 from django.db import models
 from django.contrib.auth.models import AbstractUser # For custom User model
 from django.core.validators import MinValueValidator, MaxValueValidator
-
-# ----- Custom User Manager (CRITICAL for User Model) ------
-class CustomUserManager(BaseUserManager):
-    # We need to override _create_user because the default implementation
-    # tries to pass 'username' to the model's __init__, which we've removed.
-    def _create_user(self, email, password, **extra_fields):
-        #Create and save a user with the given email and password
-        if not email:
-            raise ValueError('The email field must be set')
-        email = self.normalize_email(email)
-        user = self.model(email=email, **extra_fields)
-        user.set_password(password)
-        user.save(using=self.db)
-        return user
-
-    def create_user(self, email, password=None, **extra_fields):
-        extra_fields.setdefault('is_staff', False)
-        extra_fields.setdefault('is_superuser', False)
-        #Ensure role is set, if not provided
-        extra_fields.setdefault('role', self.model.RoleChoices.GUEST)
-        return self._create_user(email, password, **extra_fields)
-
-    def create_superuser(self, email, password=None, **extra_fields):
-        extra_fields.setdefault('is_staff', True)
-        extra_fields.setdefault('is_superuser', True)
-        extra_fields.setdefault('role', self.model.RoleChoices.ADMIN)
-
-        if extra_fields.get('is_staff') is not True:
-            raise ValueError('Superuser must have is_staff=True.')
-        if extra_fields.get('is_superuser') is not True:
-            raise ValueError('Superuser must have is_superuser=True.')
-
-        return self._create_user(email, password, **extra_fields)
-
-
-
 
 # --- User Model ---
 # Extending Django's AbstractUser to match the provided specification.
@@ -83,8 +45,6 @@ class User(AbstractUser):
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['first_name', 'last_name'] # Fields required for createsuperuser
 
-    objects = CustomUserManager()
-
     class Meta:
         verbose_name = "User"
         verbose_name_plural = "Users"
@@ -96,6 +56,10 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
+# Get the User model for ForeignKey references after its definition
+from django.contrib.auth import get_user_model
+CustomUser = get_user_model()
+
 
 # --- Property Model ---
 class Property(models.Model):
@@ -104,7 +68,7 @@ class Property(models.Model):
     Corresponds to 'Listing' in previous iteration, renamed to 'Property' as per spec.
     """
     property_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, unique=True, db_index=True)
-    host = models.ForeignKey(User, on_delete=models.CASCADE, related_name='properties') # host_id in spec
+    host = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='properties') # host_id in spec
     name = models.CharField(max_length=255, null=False) # Changed from 'title' to 'name'
     description = models.TextField(null=False)
     location = models.CharField(max_length=255, null=False) # Changed from address/city/country composite
@@ -123,9 +87,6 @@ class Property(models.Model):
     def __str__(self):
         return self.name
 
-
-
-
 # --- Booking Model ---
 class Booking(models.Model):
     """
@@ -133,7 +94,7 @@ class Booking(models.Model):
     """
     booking_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, unique=True, db_index=True)
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='bookings') # property_id in spec
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bookings') # user_id in spec
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='bookings') # user_id in spec
     start_date = models.DateField(null=False)
     end_date = models.DateField(null=False)
     total_price = models.DecimalField(max_digits=10, decimal_places=2, null=False)
@@ -209,7 +170,7 @@ class Review(models.Model):
     """
     review_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, unique=True, db_index=True)
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='reviews') # property_id in spec
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews') # user_id in spec
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='reviews') # user_id in spec
     rating = models.IntegerField(
         null=False,
         validators=[MinValueValidator(1), MaxValueValidator(5)], # CHECK: rating >= 1 AND rating <= 5
@@ -238,8 +199,8 @@ class Message(models.Model):
     Represents a direct message between two users.
     """
     message_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, unique=True, db_index=True)
-    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages') # sender_id in spec
-    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_messages') # recipient_id in spec
+    sender = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='sent_messages') # sender_id in spec
+    recipient = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='received_messages') # recipient_id in spec
     message_body = models.TextField(null=False)
     sent_at = models.DateTimeField(auto_now_add=True) # Matches 'TIMESTAMP, DEFAULT CURRENT_TIMESTAMP'
 
