@@ -1,14 +1,14 @@
 # alx_travel_app/listings/serializers.py
 
 from rest_framework import serializers
-from .models import CustomUser, Property, Booking, Review # Import CustomUser and other models
+from .models import User, Property, Booking, Message, Review, Payment  # Import CustomUser and other models
 
 # --- Helper Serializers for Nested Relationships ---
 
 # For nesting User details (host, guest, sender, recipient)
 class NestedUserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = CustomUser # Use CustomUser here
+        model = User # Use CustomUser here
         fields = ['user_id', 'first_name', 'last_name', 'email'] # Ensure user_id is included
         read_only_fields = fields # Make nested fields read-only
 
@@ -31,7 +31,7 @@ class PropertySerializer(serializers.ModelSerializer):
 
     # For input, allow specifying host by their user_id
     host_id = serializers.PrimaryKeyRelatedField(
-        queryset=CustomUser.objects.all(), # Queryset for validation
+        queryset=User.objects.all(), # Queryset for validation
         source='host',                     # Maps to the 'host' ForeignKey field
         write_only=True,                   # Only used for writing (input), not shown in output
         help_text='The user_id (UUID) of the host for this property.'
@@ -64,7 +64,7 @@ class BookingSerializer(serializers.ModelSerializer):
 
     # For input, allow specifying user (guest) by their user_id
     user_id = serializers.PrimaryKeyRelatedField(
-        queryset=CustomUser.objects.all(),
+        queryset=User.objects.all(),
         source='user',
         write_only=True,
         help_text='The user_id (UUID) of the user making the booking.'
@@ -113,3 +113,66 @@ class BookingSerializer(serializers.ModelSerializer):
             instance.status = validated_data.pop('status')
 
         return super().update(instance, validated_data)
+
+class MessageSerializer(serializers.ModelSerializer):
+    sender = NestedUserSerializer(read_only=True)
+    receiver = NestedPropertySerializer(read_only=True)
+    parent_message = serializers.SerializerMethodField(read_only=True) # To show parent ID/summary
+
+    # Write-only fields for FKs during create/update
+    sender_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), write_only=True)
+    receiver_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), write_only=True)
+    parent_message_id = serializers.PrimaryKeyRelatedField(queryset=Message.objects.all(), allow_null=True, required=False, write_only=True)
+
+    class Meta:
+        model = Message
+        fields = [
+            'message_id', 'sender', 'sender_id', 'receiver', 'receiver_id',
+            'parent_message', 'parent_message_id', 'message_body',
+            'sent_at', 'is_read', 'edited', 'edited_at'
+        ]
+        read_only_fields = ['message_id', 'sender', 'receiver', 'parent_message', 'sent_at', 'is_read', 'edited', 'edited_at']
+        # Note: 'parent_message' is read-only as a nested field, but parent_message_id is writable.
+
+    def get_parent_message(self, obj):
+        # Return ID of parent for threading clarity in API output
+        return str(obj.parent_message.message_id) if obj.parent_message else None
+
+    def validate_message_body(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Message body cannot be empty.")
+        return value
+
+class ReviewSerializer(serializers.ModelSerializer):
+    property = PropertySerializer(read_only=True) # Nested
+    user = NestedUserSerializer(read_only=True) # Nested
+
+    property_id = serializers.PrimaryKeyRelatedField(queryset=Property.objects.all(), write_only=True)
+    user_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), write_only=True)
+
+    class Meta:
+        model = Review
+        fields = [
+            'review_id', 'property', 'property_id', 'user', 'user_id',
+            'rating', 'comment', 'created_at'
+        ]
+        read_only_fields = ['review_id', 'property', 'user', 'created_at']
+
+    def validate_rating(self, value):
+        if not (1 <= value <= 5):
+            raise serializers.ValidationError("Rating must be between 1 and 5.")
+        return value
+
+
+class PaymentSerializer(serializers.ModelSerializer):
+    booking = BookingSerializer(read_only=True) # Nested for read operations
+
+    booking_id = serializers.PrimaryKeyRelatedField(queryset=Booking.objects.all(), write_only=True)
+
+    class Meta:
+        model = Payment
+        fields = [
+            'payment_id', 'booking', 'booking_id', 'amount', 'payment_date', 'payment_method'
+        ]
+        read_only_fields = ['payment_id', 'booking', 'payment_date']
+
