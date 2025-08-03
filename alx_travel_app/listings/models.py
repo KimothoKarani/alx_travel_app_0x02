@@ -108,7 +108,7 @@ class Property(models.Model):
     name = models.CharField(max_length=255, null=False) # Changed from 'title' to 'name'
     description = models.TextField(null=False)
     location = models.CharField(max_length=255, null=False) # Changed from address/city/country composite
-    pricepernight = models.DecimalField(max_digits=10, decimal_places=2, null=False) # Renamed
+    price_per_night = models.DecimalField(max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

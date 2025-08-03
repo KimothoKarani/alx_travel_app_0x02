@@ -1,74 +1,101 @@
 # alx_travel_app/listings/serializers.py
 
 from rest_framework import serializers
-from .models import User, Property, Booking, Message, Review, Payment  # Import CustomUser and other models
+from .models import User, Property, Booking, Message, Review, Payment
 
 # --- Helper Serializers for Nested Relationships ---
 
-# For nesting User details (host, guest, sender, recipient)
 class NestedUserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User # Use CustomUser here
-        fields = ['user_id', 'first_name', 'last_name', 'email'] # Ensure user_id is included
-        read_only_fields = fields # Make nested fields read-only
+    """
+    Nested serializer for displaying basic user details (used in other serializers).
+    """
+    user_id = serializers.UUIDField(read_only=True, help_text="Unique identifier of the user.")
+    first_name = serializers.CharField(read_only=True, help_text="The first name of the user.")
+    last_name = serializers.CharField(read_only=True, help_text="The last name of the user.")
+    email = serializers.EmailField(read_only=True, help_text="The email address of the user.")
 
-# For nesting Property details (e.g., within a Booking)
-class NestedPropertySerializer(serializers.ModelSerializer):
     class Meta:
-        model = Property
-        fields = ['property_id', 'name', 'location', 'pricepernight']
+        model = User
+        fields = ['user_id', 'first_name', 'last_name', 'email']
         read_only_fields = fields
 
-# --- Main Serializers for Listing and Booking ---
 
-# Property Serializer (corresponds to Listing model)
+class NestedPropertySerializer(serializers.ModelSerializer):
+    """
+    Nested serializer for displaying basic property details.
+    """
+    property_id = serializers.UUIDField(read_only=True, help_text="Unique identifier of the property.")
+    name = serializers.CharField(read_only=True, help_text="The name of the property listing.")
+    location = serializers.CharField(read_only=True, help_text="Location of the property.")
+    price_per_night = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True,
+        help_text="The price per night for booking this property."
+    )
+
+    class Meta:
+        model = Property
+        fields = ['property_id', 'name', 'location', 'price_per_night']
+        read_only_fields = fields
+
+
+# --- Main Serializers ---
+
 class PropertySerializer(serializers.ModelSerializer):
     """
-    Serializer for the Property model.
-    Handles nested host output and host_id input.
+    Serializer for creating and retrieving property listings.
     """
-    host = NestedUserSerializer(read_only=True) # Nested output for the host
-
-    # For input, allow specifying host by their user_id
+    host = NestedUserSerializer(read_only=True, help_text="Details of the host (read-only).")
     host_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), # Queryset for validation
-        source='host',                     # Maps to the 'host' ForeignKey field
-        write_only=True,                   # Only used for writing (input), not shown in output
-        help_text='The user_id (UUID) of the host for this property.'
+        queryset=User.objects.all(),
+        source='host',
+        write_only=True,
+        help_text="UUID of the user who owns this property."
     )
+    name = serializers.CharField(help_text="The name of the property listing.")
+    description = serializers.CharField(help_text="Detailed description of the property.")
+    location = serializers.CharField(help_text="Location/address of the property.")
+    price_per_night = serializers.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text="Nightly rental price for the property."
+    )
+    created_at = serializers.DateTimeField(read_only=True, help_text="Timestamp when the property was created.")
+    updated_at = serializers.DateTimeField(read_only=True, help_text="Timestamp when the property was last updated.")
 
     class Meta:
         model = Property
         fields = [
-            'property_id', 'host', 'host_id', 'name', 'description', 'location',
-            'pricepernight', 'created_at', 'updated_at'
+            'property_id', 'host', 'host_id', 'name', 'description',
+            'location', 'price_per_night', 'created_at', 'updated_at'
         ]
         read_only_fields = ['property_id', 'created_at', 'updated_at']
 
-# Booking Serializer
+
 class BookingSerializer(serializers.ModelSerializer):
     """
-    Serializer for the Booking model.
-    Handles nested property and user output, and their respective ID inputs.
+    Serializer for creating and retrieving bookings.
     """
-    property = NestedPropertySerializer(read_only=True) # Nested output for the property
-    user = NestedUserSerializer(read_only=True)       # Nested output for the user (guest)
-
-    # For input, allow specifying property by its property_id
+    property = NestedPropertySerializer(read_only=True, help_text="Details of the booked property (read-only).")
+    user = NestedUserSerializer(read_only=True, help_text="Details of the guest making the booking (read-only).")
     property_id = serializers.PrimaryKeyRelatedField(
         queryset=Property.objects.all(),
         source='property',
         write_only=True,
-        help_text='The property_id (UUID) of the property being booked.'
+        help_text="UUID of the property being booked."
     )
-
-    # For input, allow specifying user (guest) by their user_id
     user_id = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(),
         source='user',
         write_only=True,
-        help_text='The user_id (UUID) of the user making the booking.'
+        help_text="UUID of the guest making the booking."
     )
+    start_date = serializers.DateField(help_text="The start date of the booking.")
+    end_date = serializers.DateField(help_text="The end date of the booking.")
+    total_price = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True,
+        help_text="Total calculated price for the entire booking duration."
+    )
+    status = serializers.CharField(read_only=True, help_text="Current status of the booking (pending, confirmed, or canceled).")
+    created_at = serializers.DateTimeField(read_only=True, help_text="Timestamp when the booking was created.")
 
     class Meta:
         model = Booking
@@ -76,53 +103,38 @@ class BookingSerializer(serializers.ModelSerializer):
             'booking_id', 'property', 'property_id', 'user', 'user_id',
             'start_date', 'end_date', 'total_price', 'status', 'created_at'
         ]
-        # booking_id, total_price, status (initial), created_at are typically read-only on creation
         read_only_fields = ['booking_id', 'total_price', 'status', 'created_at']
 
-    # Custom create method to calculate total_price and add initial status.
-    def create(self, validated_data):
-        property_instance = validated_data.get('property')
-        start_date = validated_data.get('start_date')
-        end_date = validated_data.get('end_date')
-
-        # Basic validation for dates
-        if start_date >= end_date:
-            raise serializers.ValidationError("End date must be after start date.")
-
-        num_nights = (end_date - start_date).days
-        if num_nights <= 0:
-            raise serializers.ValidationError("Booking must be for at least one night.")
-
-        # Calculate total_price
-        validated_data['total_price'] = property_instance.pricepernight * num_nights
-
-        # Set default status, though it's already defined in the model
-        if 'status' not in validated_data:
-            validated_data['status'] = Booking.BookingStatusChoices.PENDING
-
-        return super().create(validated_data)
-
-    # Custom update method to prevent changing immutable fields
-    def update(self, instance, validated_data):
-        # Prevent changing property or user after creation
-        if 'property' in validated_data or 'user' in validated_data:
-            raise serializers.ValidationError("Property and user cannot be changed after booking creation.")
-
-        # Allow updating status
-        if 'status' in validated_data:
-            instance.status = validated_data.pop('status')
-
-        return super().update(instance, validated_data)
 
 class MessageSerializer(serializers.ModelSerializer):
-    sender = NestedUserSerializer(read_only=True)
-    receiver = NestedPropertySerializer(read_only=True)
-    parent_message = serializers.SerializerMethodField(read_only=True) # To show parent ID/summary
-
-    # Write-only fields for FKs during create/update
-    sender_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), write_only=True)
-    receiver_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), write_only=True)
-    parent_message_id = serializers.PrimaryKeyRelatedField(queryset=Message.objects.all(), allow_null=True, required=False, write_only=True)
+    """
+    Serializer for sending and retrieving direct messages between users.
+    """
+    sender = NestedUserSerializer(read_only=True, help_text="Details of the sender (read-only).")
+    receiver = NestedUserSerializer(read_only=True, help_text="Details of the recipient (read-only).")
+    parent_message = serializers.SerializerMethodField(read_only=True, help_text="ID of the parent message if this is a reply.")
+    sender_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        write_only=True,
+        help_text="UUID of the user sending the message."
+    )
+    receiver_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        write_only=True,
+        help_text="UUID of the message recipient."
+    )
+    parent_message_id = serializers.PrimaryKeyRelatedField(
+        queryset=Message.objects.all(),
+        allow_null=True,
+        required=False,
+        write_only=True,
+        help_text="Optional UUID of the parent message when replying."
+    )
+    message_body = serializers.CharField(help_text="Content of the message being sent.")
+    sent_at = serializers.DateTimeField(read_only=True, help_text="Timestamp when the message was sent.")
+    is_read = serializers.BooleanField(read_only=True, help_text="Indicates if the message has been read.")
+    edited = serializers.BooleanField(read_only=True, help_text="Indicates if the message has been edited.")
+    edited_at = serializers.DateTimeField(read_only=True, help_text="Timestamp when the message was last edited.")
 
     class Meta:
         model = Message
@@ -132,23 +144,30 @@ class MessageSerializer(serializers.ModelSerializer):
             'sent_at', 'is_read', 'edited', 'edited_at'
         ]
         read_only_fields = ['message_id', 'sender', 'receiver', 'parent_message', 'sent_at', 'is_read', 'edited', 'edited_at']
-        # Note: 'parent_message' is read-only as a nested field, but parent_message_id is writable.
 
     def get_parent_message(self, obj):
-        # Return ID of parent for threading clarity in API output
-        return str(obj.parent_message.message_id) if obj.parent_message else None
+        return str(obj.parent_message.message_id) if hasattr(obj, 'parent_message') and obj.parent_message else None
 
-    def validate_message_body(self, value):
-        if not value.strip():
-            raise serializers.ValidationError("Message body cannot be empty.")
-        return value
 
 class ReviewSerializer(serializers.ModelSerializer):
-    property = PropertySerializer(read_only=True) # Nested
-    user = NestedUserSerializer(read_only=True) # Nested
-
-    property_id = serializers.PrimaryKeyRelatedField(queryset=Property.objects.all(), write_only=True)
-    user_id = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), write_only=True)
+    """
+    Serializer for creating and retrieving property reviews.
+    """
+    property = PropertySerializer(read_only=True, help_text="Details of the property being reviewed (read-only).")
+    user = NestedUserSerializer(read_only=True, help_text="Details of the user leaving the review (read-only).")
+    property_id = serializers.PrimaryKeyRelatedField(
+        queryset=Property.objects.all(),
+        write_only=True,
+        help_text="UUID of the property being reviewed."
+    )
+    user_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        write_only=True,
+        help_text="UUID of the user leaving the review."
+    )
+    rating = serializers.IntegerField(help_text="Rating for the property (1 to 5).")
+    comment = serializers.CharField(help_text="Detailed review comment about the property.")
+    created_at = serializers.DateTimeField(read_only=True, help_text="Timestamp when the review was created.")
 
     class Meta:
         model = Review
@@ -158,16 +177,23 @@ class ReviewSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['review_id', 'property', 'user', 'created_at']
 
-    def validate_rating(self, value):
-        if not (1 <= value <= 5):
-            raise serializers.ValidationError("Rating must be between 1 and 5.")
-        return value
-
 
 class PaymentSerializer(serializers.ModelSerializer):
-    booking = BookingSerializer(read_only=True) # Nested for read operations
-
-    booking_id = serializers.PrimaryKeyRelatedField(queryset=Booking.objects.all(), write_only=True)
+    """
+    Serializer for recording and retrieving payment details.
+    """
+    booking = BookingSerializer(read_only=True, help_text="Details of the related booking (read-only).")
+    booking_id = serializers.PrimaryKeyRelatedField(
+        queryset=Booking.objects.all(),
+        write_only=True,
+        help_text="UUID of the booking for which the payment is made."
+    )
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, help_text="Amount paid for the booking.")
+    payment_date = serializers.DateTimeField(read_only=True, help_text="Timestamp when the payment was recorded.")
+    payment_method = serializers.ChoiceField(
+        choices=Payment.PaymentMethodChoices.choices,
+        help_text="Payment method used (credit_card, PayPal, or Stripe)."
+    )
 
     class Meta:
         model = Payment
@@ -175,4 +201,3 @@ class PaymentSerializer(serializers.ModelSerializer):
             'payment_id', 'booking', 'booking_id', 'amount', 'payment_date', 'payment_method'
         ]
         read_only_fields = ['payment_id', 'booking', 'payment_date']
-
