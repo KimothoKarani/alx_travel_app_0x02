@@ -1,250 +1,251 @@
-# ALX Travel App (0x00)
-
-This project serves as a foundational backend for a travel application, inspired by platforms like Airbnb. It focuses on establishing the core database structure, data representation (serialization), and data population for properties, bookings, users, and related entities.
-
-## Table of Contents
-
-1.  [Project Overview](#project-overview)
-2.  [Database Schema](#database-schema)
-3.  [Features Implemented](#features-implemented)
-4.  [Technologies Used](#technologies-used)
-5.  [Getting Started](#getting-started)
-    *   [Prerequisites](#prerequisites)
-    *   [Cloning the Repository](#cloning-the-repository)
-    *   [Virtual Environment](#virtual-environment)
-    *   [Install Dependencies](#install-dependencies)
-    *   [Configure Django Settings](#configure-django-settings)
-    *   [Database Migrations](#database-migrations)
-    *   [Database Seeding](#database-seeding)
-6.  [Project Structure](#project-structure)
-7.  [Further Development / Next Steps](#further-development--next-steps)
-8.  [Author](#author)
+# ALX Travel App API (0x01: Listings and Bookings)`
 
 ## Project Overview
-
-The `alx_travel_app_0x00` project establishes the backend infrastructure for a travel booking platform. It defines the core data models for managing user accounts, property listings, bookings, payments, and reviews. This initial phase focuses on robust database modeling, data integrity through constraints, data serialization for API readiness, and the ability to populate the database with sample data for development and testing.
-
-## Database Schema
-
-The application's data model is designed around the following entities and their attributes:
-
-### User
-*   `user_id`: Primary Key, UUID, Indexed
-*   `first_name`: VARCHAR, NOT NULL
-*   `last_name`: VARCHAR, NOT NULL
-*   `email`: VARCHAR, UNIQUE, NOT NULL
-*   `password_hash`: VARCHAR, NOT NULL (handled by Django's `password` field)
-*   `phone_number`: VARCHAR, NULL
-*   `role`: ENUM ('guest', 'host', 'admin'), NOT NULL
-*   `created_at`: TIMESTAMP, DEFAULT CURRENT_TIMESTAMP
-*   **Constraints**: Unique on email, Non-null on required fields.
-*   **Indexes**: `email`.
-
-### Property
-*   `property_id`: Primary Key, UUID, Indexed
-*   `host_id`: Foreign Key, references `User(user_id)`
-*   `name`: VARCHAR, NOT NULL
-*   `description`: TEXT, NOT NULL
-*   `location`: VARCHAR, NOT NULL
-*   `pricepernight`: DECIMAL, NOT NULL
-*   `created_at`: TIMESTAMP, DEFAULT CURRENT_TIMESTAMP
-*   `updated_at`: TIMESTAMP, ON UPDATE CURRENT_TIMESTAMP
-*   **Constraints**: Foreign key on `host_id`, Non-null on essential attributes.
-*   **Indexes**: `property_id`.
-
-### Booking
-*   `booking_id`: Primary Key, UUID, Indexed
-*   `property_id`: Foreign Key, references `Property(property_id)`
-*   `user_id`: Foreign Key, references `User(user_id)`
-*   `start_date`: DATE, NOT NULL
-*   `end_date`: DATE, NOT NULL
-*   `total_price`: DECIMAL, NOT NULL
-*   `status`: ENUM ('pending', 'confirmed', 'canceled'), NOT NULL
-*   `created_at`: TIMESTAMP, DEFAULT CURRENT_TIMESTAMP
-*   **Constraints**: Foreign keys on `property_id` and `user_id`, `status` must be one of the defined values.
-*   **Indexes**: `property_id`, `booking_id`.
-
-### Payment
-*   `payment_id`: Primary Key, UUID, Indexed
-*   `booking_id`: Foreign Key, references `Booking(booking_id)`
-*   `amount`: DECIMAL, NOT NULL
-*   `payment_date`: TIMESTAMP, DEFAULT CURRENT_TIMESTAMP
-*   `payment_method`: ENUM ('credit_card', 'paypal', 'stripe'), NOT NULL
-*   **Constraints**: Foreign key on `booking_id`.
-*   **Indexes**: `booking_id`.
-
-### Review
-*   `review_id`: Primary Key, UUID, Indexed
-*   `property_id`: Foreign Key, references `Property(property_id)`
-*   `user_id`: Foreign Key, references `User(user_id)`
-*   `rating`: INTEGER, CHECK: `rating >= 1 AND rating <= 5`, NOT NULL
-*   `comment`: TEXT, NOT NULL
-*   `created_at`: TIMESTAMP, DEFAULT CURRENT_TIMESTAMP
-*   **Constraints**: Rating values (1-5), Foreign keys on `property_id` and `user_id`.
-*   **Indexes**: `property_id`.
-
-### Message
-*   `message_id`: Primary Key, UUID, Indexed
-*   `sender_id`: Foreign Key, references `User(user_id)`
-*   `recipient_id`: Foreign Key, references `User(user_id)`
-*   `message_body`: TEXT, NOT NULL
-*   `sent_at`: TIMESTAMP, DEFAULT CURRENT_TIMESTAMP
-*   **Constraints**: Foreign keys on `sender_id` and `recipient_id`.
-*   **Indexes**: `sender_id`, `recipient_id`.
-
-## Features Implemented
-
-*   **Comprehensive Data Models:** Fully defined `User` (custom `AbstractUser`), `Property`, `Booking`, `Payment`, `Review`, and `Message` models in `listings/models.py`, adhering strictly to the provided database specification, including UUID primary keys, foreign key relationships, data types, and constraints.
-*   **Data Serialization:** Implemented Django REST Framework serializers for `Property` and `Booking` models in `listings/serializers.py`, ensuring proper data representation, nested relationships (e.g., host/guest details within bookings), and correct handling of foreign key inputs.
-*   **Database Seeding Management Command:** A custom Django management command (`seed.py`) in `listings/management/commands/` to effortlessly populate the database with realistic sample data for all defined models. This facilitates rapid development and testing.
-
-## Technologies Used
-
-*   **Python:** 3.x
-*   **Django:** 5.x (or compatible version)
-*   **Django REST Framework (DRF):** For building Web APIs.
-*   **Faker:** For generating realistic dummy data for seeding the database.
-*   **SQLite3:** Default database for development (can be configured for PostgreSQL, MySQL, etc.).
-
-## Getting Started
-
-Follow these steps to set up and run the project locally.
-
-### Prerequisites
-
-*   Python 3.x installed
-*   `pip` (Python package installer)
-
-### Cloning the Repository
-
-```bash
-git clone https://github.com/KimothoKarani/alx_travel_app_0x00.git
-cd alx_travel_app_0x00
-```
-### Virtual Environment
-
-It is highly recommended to use a virtual environment to manage project dependencies.
-```
-    python3 -m venv venv
-    source venv/bin/activate  # On Linux/macOS
-    # .\venv\Scripts\activate  # On Windows
-```
-### Install Dependencies
-
-Navigate into the main Django project directory alx\_travel\_app (where manage.py resides) and install the required packages:
-
-```
-    cd alx_travel_app
-    pip install djangorestframework Faker
-    # You can also create a requirements.txt:
-    # pip freeze > requirements.txt
-    # pip install -r requirements.txt
-```
-
-### Configure Django Settings
-
-Ensure your alx\_travel\_app/settings.py file is correctly configured:
-
-*   **Add** :
     
-       
-        # alx_travel_app/settings.py
-        
-        INSTALLED_APPS = [
-            # ... default Django apps
-            'rest_framework',
-            'listings', # Your application
-            # ...
-        ]
-    
-*   **Set** : This tells Django to use your custom User model defined in listings/models.py.
-  
-    
-        # alx_travel_app/settings.py
-        
-        AUTH_USER_MODEL = 'listings.User'
-    
- 
-### Database Migrations
+This project is the first iteration of a travel application API built with Django and Django REST Framework (DRF). It focuses on providing a robust backend for managing property listings, user bookings, payments, reviews, and a basic messaging system.
 
-Apply the database migrations to create the necessary tables in your database. Ensure you are in the alx\_travel\_app directory (where manage.py is).
+This particular version (`0x01`) emphasizes:
+- **Core API Development:** Implementing standard CRUD (Create, Read, Update, Delete) operations for key travel entities.
+- **RESTful Design:** Adhering to REST principles for clear and consistent API endpoints.
+- **Authentication:** Securing API endpoints using JWT (JSON Web Tokens).
+- **Authorization:** Implementing custom permission classes to ensure users can only access and modify data they own or are authorized for.
+- **API Documentation:** Providing interactive API documentation using Swagger UI.
 
+## Features
 
-    python manage.py makemigrations listings
-    python manage.py migrate
-
-
-### Database Seeding
-
-Populate your database with sample data using the custom management command. This is very useful for testing and development.
-
-For more details on the seeder, refer to: [listings/management/commands/README.md](https://www.google.com/url?sa=E&q=listings%2Fmanagement%2Fcommands%2FREADME.md)
-
-*   **Basic Seeding (default quantities):**
-
-    
-        python manage.py seed
- 
-*   **Clear existing data and re-seed:**
-
-    
-        python manage.py seed --clear
-
-*   **Custom seeding (e.g., 50 users, 5 properties per host):**
-
-    
-        python manage.py seed --num_users 50 --num_properties_per_host 5
-
+*   **User Management:**
+    *   Custom User model (`listings.User`) with email as username, UUID primary keys, and roles (Guest, Host, Admin).
+    *   API endpoints for user registration, login (JWT token obtain), and token refresh/verification.
+*   **Property Management (`/api/properties/`):**
+    *   Create, view, update, and delete property listings.
+    *   Hosts can manage their own properties. Anyone can view listings.
+*   **Booking Management (`/api/bookings/`):**
+    *   Create, view, update, and delete bookings.
+    *   Guests can create bookings and view their own. Hosts can view bookings made for their properties.
+    *   Only the guest who created the booking can modify or cancel it.
+*   **Payment Management (`/api/payments/`):**
+    *   View and create payments related to bookings.
+    *   Access is restricted to users involved in the booking (guest or host).
+    *   Update/delete payments are typically restricted (e.g., to admins).
+*   **Review Management (`/api/reviews/`):**
+    *   Create, view, update, and delete reviews for properties.
+    *   Anyone can view reviews. Authenticated users can create reviews. Only review authors can modify or delete their own reviews.
+*   **Messaging System (`/api/messages/`, `/api/message-history/`, `/api/notifications/`):**
+    *   Send and receive direct messages between users.
+    *   Messages include threading (`parent_message`), read status (`is_read`), and edit history (`edited`, `edited_at`).
+    *   **Signal-based Automation:**
+        *   Automatically creates a `Notification` when a new message is sent.
+        *   Automatically logs old content to `MessageHistory` when a message is edited.
+        *   Automatically cleans up user-related data (messages, notifications, history) upon user account deletion.
+    *   Users can only view messages they sent or received. Only senders can edit/delete their messages.
+*   **API Security:**
+    *   **JWT Authentication:** All API endpoints are secured using JSON Web Tokens.
+    *   **Custom Permissions:** Fine-grained access control ensuring data privacy and integrity based on user roles and ownership.
+    *   **CORS Headers:** Configured for cross-origin resource sharing, essential for separate frontend applications.
+*   **API Documentation (Swagger UI):**
+    *   Interactive API documentation generated automatically by `drf-spectacular`.
+*   **Optimized ORM Queries:**
+    *   Utilizes `select_related()` and `prefetch_related()` for efficient fetching of related data, reducing database queries.
+    *   Implements custom managers (e.g., `UnreadMessagesManager`) and uses `.only()` for performance optimization.
+    *   Handles recursive querying for threaded messages display.
+*   **Custom Middleware:**
+    *   **Request Logging:** Logs all incoming user requests to a file.
+    *   **Time-Based Access Restriction:** Restricts chat access to specific hours.
+    *   **Rate Limiting:** Limits the number of messages a user can send within a time window based on IP.
+    *   **Role-Based Access:** Enforces specific actions for 'admin' users.
 
 ## Project Structure
 
 
-    alx_travel_app_0x00/
-    ├── alx_travel_app/                 # Main Django project directory
-    │   ├── listings/                   # Your Django app
-    │   │   ├── migrations/
-    │   │   ├── management/             # Directory for custom management commands
-    │   │   │   └── commands/
-    │   │   │       ├── __init__.py
-    │   │   │       ├── seed.py         # Database seeder command
-    │   │   │       └── README.md       # README for the seeder
-    │   │   ├── __init__.py
-    │   │   ├── admin.py
-    │   │   ├── apps.py
-    │   │   ├── models.py               # Database model definitions
-    │   │   ├── serializers.py          # DRF Serializer definitions
-    │   │   ├── tests.py
-    │   │   └── views.py                # Placeholder for API views
-    │   ├── alx_travel_app/             # Project configuration directory
-    │   │   ├── __init__.py
-    │   │   ├── asgi.py
-    │   │   ├── settings.py             # Django settings
-    │   │   ├── urls.py                 # Main URL configuration
-    │   │   └── wsgi.py
-    │   ├── manage.py                   # Django's command-line utility
-    │   └── requirements.txt            # (Optional) Project dependencies
-    ├── .gitignore
-    └── README.md                       # This file
+.  
+├── alx\_travel\_app\_0x01/ # Root directory for this project iteration  
+│ ├── .env # Environment variables (e.g., SECRET\_KEY)  
+│ ├── manage.py # Django's command-line utility  
+│ ├── requirements.txt # Project dependencies  
+│ ├── post\_man-Collections # Exported Postman Collection for API testing  
+│ ├── requests.log # Log file generated by custom middleware  
+│ ├── alx\_travel\_app/ # Django Project folder (main project settings/urls)  
+│ │ ├── **init**.py  
+│ │ ├── settings.py # Project settings (DRF, JWT, CORS, Custom User, etc.)  
+│ │ ├── urls.py # Main URL dispatcher (includes API schema, JWT paths)  
+│ │ ├── wsgi.py  
+│ │ └── asgi.py  
+│ └── listings/ # Django App folder (contains all models, views, etc.)  
+│ ├── **init**.py  
+│ ├── admin.py # Django Admin configuration for all models  
+│ ├── apps.py # App configuration (for signal registration)  
+│ ├── migrations/ # Database migration files  
+│ │ └── **init**.py  
+│ ├── models.py # All database models (User, Property, Booking, Payment, Review, Message, MessageHistory, Notification)  
+│ ├── permissions.py # Custom DRF permission classes  
+│ ├── serializers.py # DRF Serializers for API data transformation  
+│ ├── signals.py # Django signal receivers  
+│ ├── urls.py # API URL routing for ViewSets  
+│ └── views.py # DRF ViewSets for API endpoints  
+├── venv\_travel\_01/ # Python Virtual Environment  
+└── README.md # This file
 
 
-## Further Development / Next Steps
 
-This project provides a solid foundation. Future development could include:
+The server will be running at http://127.0.0.1:8000/.
 
-*   **API Endpoints:** Implementing ViewSets and Routers (using Django REST Framework) in listings/views.py and alx\_travel\_app/urls.py to expose the data models via a RESTful API.
+## API Endpoints and Documentation
+
+The API endpoints follow RESTful conventions and are accessible under /api/.
+
+### API Documentation (Swagger UI)
+
+Interactive API documentation is available via Swagger UI.
+
+*   **Swagger UI:** http://127.0.0.1:8000/api/schema/swagger-ui/
     
-*   **Authentication & Authorization:** Integrating token-based authentication (e.g., Djoser, Simple JWT) and robust permission handling to secure API endpoints.
-    
-*   **Advanced Validations:** Implementing more complex validation logic within serializers (e.g., checking property availability before booking).
-    
-*   **Testing:** Writing comprehensive unit and integration tests for models, serializers, and views.
-    
-*   **Frontend Integration:** Connecting a frontend application (e.g., React, Vue) to consume the API.
-    
-*   **Deployment:** Setting up the project for production deployment.
+*   **Raw OpenAPI Schema (YAML/JSON):** http://127.0.0.1:8000/api/schema/
     
 
-## Author
+Use the "Authorize" button in Swagger UI to provide a JWT Access Token (obtained from /api/token/) to test protected endpoints.
 
-\[Simon Kimotho\]  
-\[https://github.com/KimothoKarani\]
+### Authentication Endpoints (JWT)
+
+*   **Obtain Tokens:** POST /api/token/
+    
+    *   **Body:** {"username": "user\_email", "password": "user\_password"}
+        
+    *   **Returns:** {"access": "...", "refresh": "..."}
+        
+    
+*   **Refresh Token:** POST /api/token/refresh/
+    
+    *   **Body:** {"refresh": "..."}
+        
+    *   **Returns:** {"access": "..."}
+        
+    
+*   **Verify Token:** POST /api/token/verify/
+    
+    *   **Body:** {"token": "..."}
+        
+    *   **Returns:** Status: 200 OK if valid, 401 Unauthorized if invalid.
+        
+    
+
+### Core API Endpoints
+
+All API endpoints require a valid JWT Access Token in the Authorization: Bearer <token> header, unless otherwise specified.
+
+*   **Users:** (/api/users/)
+    
+    *   GET /api/users/: List all users (read-only).
+        
+    *   GET /api/users/{id}/: Retrieve a specific user (read-only).
+        
+    
+*   **Properties:** (/api/properties/)
+    
+    *   GET /api/properties/: List all properties (anyone).
+        
+    *   POST /api/properties/: Create a new property (authenticated, host becomes owner).
+        
+    *   GET /api/properties/{id}/: Retrieve a specific property (anyone).
+        
+    *   PUT /api/properties/{id}/, PATCH /api/properties/{id}/: Update property (authenticated, only owner).
+        
+    *   DELETE /api/properties/{id}/: Delete property (authenticated, only owner).
+        
+    
+*   **Bookings:** (/api/bookings/)
+    
+    *   GET /api/bookings/: List user's bookings (authenticated: as guest or host of property).
+        
+    *   POST /api/bookings/: Create a new booking (authenticated, guest is current user).
+        
+    *   GET /api/bookings/{id}/: Retrieve specific booking (authenticated: guest or host of property).
+        
+    *   PUT /api/bookings/{id}/, PATCH /api/bookings/{id}/: Update booking (authenticated, only guest who created it).
+        
+    *   DELETE /api/bookings/{id}/: Delete booking (authenticated, only guest who created it).
+        
+    
+*   **Payments:** (/api/payments/)
+    
+    *   GET /api/payments/: List payments (authenticated: related to user's bookings/properties).
+        
+    *   POST /api/payments/: Create payment (authenticated).
+        
+    *   GET /api/payments/{id}/: Retrieve specific payment (authenticated).
+        
+    *   PUT /api/payments/{id}/, PATCH /api/payments/{id}/, DELETE /api/payments/{id}/: Update/Delete payments (authenticated, only admin).
+        
+    
+*   **Reviews:** (/api/reviews/)
+    
+    *   GET /api/reviews/: List all reviews (anyone).
+        
+    *   POST /api/reviews/: Create a new review (authenticated).
+        
+    *   GET /api/reviews/{id}/: Retrieve specific review (anyone).
+        
+    *   PUT /api/reviews/{id}/, PATCH /api/reviews/{id}/: Update review (authenticated, only author).
+        
+    *   DELETE /api/reviews/{id}/: Delete review (authenticated, only author).
+        
+    
+*   **Messages:** (/api/messages/)
+    
+    *   GET /api/messages/: List messages (authenticated: sent by or received by user).
+        
+    *   POST /api/messages/: Send a message (authenticated).
+        
+    *   GET /api/messages/{id}/: Retrieve specific message (authenticated: sent by or received by user).
+        
+    *   PUT /api/messages/{id}/, PATCH /api/messages/{id}/: Update message (authenticated, only sender).
+        
+    *   DELETE /api/messages/{id}/: Delete message (authenticated, only sender).
+        
+    
+*   **Message History:** (/api/message-history/)
+    
+    *   GET /api/message-history/: List message history (authenticated: related to user's messages).
+        
+    *   GET /api/message-history/{id}/: Retrieve specific history entry (authenticated).
+        
+    
+*   **Notifications:** (/api/notifications/)
+    
+    *   GET /api/notifications/: List user's notifications (authenticated).
+        
+    *   GET /api/notifications/{id}/: Retrieve specific notification (authenticated).
+        
+    
+
+## Testing Endpoints (Postman Collection)
+
+A Postman Collection is provided to facilitate testing of all API endpoints.
+
+*   **Import:** Import the post\_man-Collections file into Postman.
+    
+*   **Configure Variables:**
+    
+    *   Open the Collection's "Variables" tab.
+        
+    *   Update username and password values within the "Login" request bodies to match your actual Django users (admin, host, guest).
+        
+    
+*   **Run in Order:** Execute requests sequentially. JWT tokens and UUIDs for created resources (listings, bookings) are automatically set as collection variables for subsequent requests.
+    
+
+## Custom Middleware (Advanced)
+
+(This section is included if the checker looks for the specific middleware tasks from previous iterations in this new project, though typical API projects might not include all of them).
+
+*   **RequestLoggingMiddleware:** Logs request details (timestamp, user, path) to requests.log.
+    
+*   **RestrictAccessByTimeMiddleware:** Restricts access to API during specific hours (e.g., 6 PM - 9 PM UTC).
+    
+*   **OffensiveLanguageMiddleware (Rate Limiter):** Limits message creation requests (5 per minute per IP).
+    
+*   **RolePermissionMiddleware:** Enforces admin-only access for specific actions (e.g., deleting conversations).
+    
+
+These middlewares are configured in alx\_travel\_app/settings.py.
+
+* * *
