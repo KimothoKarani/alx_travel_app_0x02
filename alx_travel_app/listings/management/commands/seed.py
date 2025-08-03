@@ -5,7 +5,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.core.management.base import BaseCommand
 from faker import Faker
-from ...models import CustomUser, Property, Booking, Payment, Review, Message
+from ...models import User, Property, Booking, Payment, Review, Message
 
 fake = Faker()
 
@@ -28,7 +28,7 @@ class Command(BaseCommand):
             Payment.objects.all().delete()
             Booking.objects.all().delete()
             Property.objects.all().delete()
-            CustomUser.objects.filter(is_superuser=False).delete()
+            User.objects.filter(is_superuser=False).delete()
 
         self.seed_users(opts['users'])
         self.seed_properties(opts['properties'])
@@ -38,10 +38,10 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Database seeded successfully."))
 
     def seed_users(self, count):
-        roles = [CustomUser.RoleChoices.GUEST, CustomUser.RoleChoices.HOST]
+        roles = [User.RoleChoices.GUEST, User.RoleChoices.HOST]
         for _ in range(count):
             role = random.choice(roles)
-            user = CustomUser.objects.create_user(
+            user = User.objects.create_user(
                 email=fake.unique.email(),
                 username=fake.user_name(),
                 password='password123',
@@ -50,13 +50,13 @@ class Command(BaseCommand):
                 phone_number=fake.phone_number(),
                 role=role,
             )
-            if role == CustomUser.RoleChoices.HOST:
+            if role == User.RoleChoices.HOST:
                 user.is_staff = True
                 user.save()
         self.stdout.write(self.style.SUCCESS(f"Created {count} users."))
 
     def seed_properties(self, count_per_host):
-        hosts = CustomUser.objects.filter(role=CustomUser.RoleChoices.HOST)
+        hosts = User.objects.filter(role=User.RoleChoices.HOST)
         total = 0
         for host in hosts:
             for _ in range(count_per_host):
@@ -65,13 +65,13 @@ class Command(BaseCommand):
                     name=fake.catch_phrase(),
                     description=fake.text(200),
                     location=fake.address(),
-                    pricepernight=decimal.Decimal(random.randint(100, 1000)),
+                    price_per_night=decimal.Decimal(random.randint(100, 1000)),
                 )
                 total += 1
         self.stdout.write(self.style.SUCCESS(f"Created {total} properties."))
 
     def seed_bookings(self, max_per_guest):
-        guests = CustomUser.objects.filter(role=CustomUser.RoleChoices.GUEST)
+        guests = User.objects.filter(role=User.RoleChoices.GUEST)
         properties = list(Property.objects.all())
         booking_count = 0
         payment_count = 0
@@ -81,7 +81,7 @@ class Command(BaseCommand):
                 prop = random.choice(properties)
                 start = fake.date_between(start_date='-30d', end_date='+30d')
                 end = start + timedelta(days=random.randint(1, 7))
-                price = prop.pricepernight * (end - start).days
+                price = prop.price_per_night * (end - start).days
                 status = random.choice(Booking.BookingStatusChoices.values)
 
                 booking = Booking.objects.create(
@@ -115,7 +115,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Created {payment_count} payments and related reviews."))
 
     def seed_messages(self, count):
-        users = list(CustomUser.objects.exclude(role=CustomUser.RoleChoices.ADMIN))
+        users = list(User.objects.exclude(role=User.RoleChoices.ADMIN))
         if len(users) < 2:
             self.stdout.write(self.style.WARNING("Not enough users to send messages."))
             return

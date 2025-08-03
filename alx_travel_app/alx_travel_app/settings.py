@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/5.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
-
+from datetime import timedelta
 from pathlib import Path
 from decouple import config
 
@@ -40,6 +40,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework_simplejwt',
+    'drf_spectacular',
     'listings',
 ]
 
@@ -119,6 +121,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -126,3 +129,67 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'listings.User'
+
+# DRF Global Settings (These are good defaults)
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication', # For browsable API
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated', # Default security: require login
+    ],
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer', # Good for development
+    ],
+    'DEFAULT_PAGINATION_CLASS': None,
+    'PAGE_SIZE': None, # Adjust as needed
+
+}
+
+# --- drf-spectacular Specific Settings (ADD THIS SECTION) ---
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'ALX Travel App API', # Title of your API
+    'DESCRIPTION': 'API for managing property listings, bookings, payments, reviews, and messaging.', # Detailed description
+    'VERSION': '1.0.0', # API version
+    'SERVE_INCLUDE_SCHEMA': False, # Set to False in production for security
+    # Other optional settings:
+    # 'SERVE_PUBLIC': True, # Whether to serve the schema publicly (default: True)
+    # 'SCHEMA_PATH_PREFIX': r'/api/', # Only generate schema for paths starting with /api/
+    'SECURITY': [ # For JWT authentication in Swagger UI
+        {
+            "Bearer Auth": [],
+        }
+    ],
+    'SWAGGER_UI_DIST': 'SIDECAR', # Use sidecar to serve UI from local files (faster, no CDN dependency)
+    'SWAGGER_UI_FAVICON_HREF': 'https://alx-intranet.hbtn.io/favicon.ico', # Example favicon
+    'CAMELIZE_NAMES': True, # Optional: CamelCase for JSON fields in schema
+}
+
+
+
+# Simple JWT Specific Settings (Assuming you've set SECRET_KEY correctly from .env)
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=50), # e.g., 50 minutes
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),   # e.g., 1 day
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': False, # Set to True in production for token blacklisting
+    'UPDATE_LAST_LOGIN': False,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'VERIFYING_KEY': None,
+    'AUDIENCE': None,
+    'ISSUER': None,
+    'JWK_URL': None,
+    'LEEWAY': 0,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'USER_ID_FIELD': 'user_id', # <-- CRITICAL: Matches your Custom User model's PK field
+    'USER_ID_CLAIM': 'user_id', # Name of the claim in the JWT payload
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
+    'JTI_CLAIM': 'jti',
+}

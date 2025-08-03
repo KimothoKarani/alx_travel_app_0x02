@@ -1,7 +1,7 @@
 # ALX Travel App API (0x01: Listings and Bookings)`
 
 ## Project Overview
-
+    
 This project is the first iteration of a travel application API built with Django and Django REST Framework (DRF). It focuses on providing a robust backend for managing property listings, user bookings, payments, reviews, and a basic messaging system.
 
 This particular version (`0x01`) emphasizes:
@@ -86,6 +86,8 @@ This particular version (`0x01`) emphasizes:
 └── README.md # This file
 
 
+
+The server will be running at http://127.0.0.1:8000/.
 
 ## API Endpoints and Documentation
 
@@ -247,4 +249,3 @@ A Postman Collection is provided to facilitate testing of all API endpoints.
 These middlewares are configured in alx\_travel\_app/settings.py.
 
 * * *
-
