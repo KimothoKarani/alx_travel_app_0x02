@@ -27,3 +27,4 @@ alx_venv/
 # Static and media files
 staticfiles/
 media/
+alx_travel_app/db.sqlite3
