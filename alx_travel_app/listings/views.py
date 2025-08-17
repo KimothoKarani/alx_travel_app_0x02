@@ -1,32 +1,22 @@
-"""
-Views module for the booking application.
-
-This module defines the API endpoints for managing users, properties, bookings, payments, reviews, and messages.
-It includes custom permission classes for enforcing ownership and access control.
-All views are implemented using Django REST Framework viewsets for CRUD operations.
-
---- DRF-SPECTACULAR DOCUMENTATION GENERATION ---
-
-drf-spectacular automatically introspects DRF ViewSets, serializers, and URL patterns
-to generate an OpenAPI schema (your API blueprint). The `extend_schema` decorator
-is used to provide additional metadata, examples, and overrides that cannot be
-automatically inferred or to make the documentation more explicit and user-friendly.
-
-For each ViewSet, drf-spectacular will typically generate:
-- A `/tag` (e.g., /users, /properties) for the list endpoint (GET, POST).
-- A `/tag/{pk}` (e.g., /users/{user_id}, /properties/{property_id}) for the detail endpoint (GET, PUT, PATCH, DELETE).
-- The HTTP methods available for each endpoint based on the ViewSet type (e.g., ReadOnlyModelViewSet only supports GET).
-- Request/response schemas based on the assigned `serializer_class`.
-- Security requirements based on `permission_classes` and `authentication_classes` defined in REST_FRAMEWORK settings.
-- Custom descriptions, summaries, and examples specified via `@extend_schema`.
-"""
-
+# alx_travel_app/listings/views.py
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import viewsets, filters, status, permissions
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny, IsAdminUser
 from django.db.models import Q
-from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse, inline_serializer # Import inline_serializer for complex examples
+from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse, inline_serializer, OpenApiParameter
 from rest_framework import serializers # Needed for inline_serializer
+
+# New imports for Chapa and Celery
+import requests
+import json
+import uuid # For generating unique transaction references
+from django.conf import settings
+from django.http import JsonResponse, HttpResponseRedirect
+from django.views.decorators.csrf import csrf_exempt # Use with caution in production, or use DRF's APIView
+from django.shortcuts import get_object_or_404
+from celery import shared_task # For background tasks
+
 
 from .serializers import (
     NestedUserSerializer,
@@ -40,39 +30,61 @@ from .serializers import (
 from .models import User, Property, Booking, Payment, Review, Message
 
 
+# --- Chapa API Endpoints (Constants) ---
+CHAPA_INITIATE_URL = "https://api.chapa.co/v1/initialize"
+CHAPA_VERIFY_URL = "https://api.chapa.co/v1/verify/" # Note: takes a transaction_id after the slash
+
+
+# --- Celery Task for Email Notification ---
+@shared_task
+def send_payment_confirmation_email(recipient_email, amount, booking_ref):
+    """
+    Celery task to send a payment confirmation email.
+    In a real application, you would integrate a proper email sending library
+    like Django's `send_mail` or `EmailMessage`, possibly with email templates.
+    """
+    try:
+        # Simulate email sending process
+        print(f"DEBUG: Attempting to send payment confirmation email.")
+        print(f"DEBUG: To: {recipient_email}")
+        print(f"DEBUG: Subject: Your Payment for Booking {booking_ref} is Confirmed!")
+        print(f"DEBUG: Body: Dear customer, your payment of {amount} ETB for booking {booking_ref} has been successfully processed.")
+
+        # Example using Django's send_mail (uncomment and configure if actual email sending is needed)
+        # from django.core.mail import send_mail
+        # send_mail(
+        #     f'Your Payment for Booking {booking_ref} is Confirmed!',
+        #     f'Dear customer, Your payment of {amount} ETB for booking {booking_ref} has been successfully processed.',
+        #     settings.DEFAULT_FROM_EMAIL, # Make sure this is set in settings.py
+        #     [recipient_email],
+        #     fail_silently=False,
+        # )
+        print(f"DEBUG: Email for booking {booking_ref} simulated to be sent successfully.")
+    except Exception as e:
+        print(f"ERROR: Failed to send payment confirmation email for booking {booking_ref}: {e}")
+        # Log the error, perhaps retry the task or notify an admin
+
+
 # -------------------------
 # CUSTOM PERMISSIONS
 # -------------------------
-# drf-spectacular will infer that these permission classes are applied
-# and will typically show `Bearer Auth` (from your JWT settings) as a security requirement
-# for methods where IsAuthenticated or its subclasses are used.
-
 class IsPropertyHost(IsAuthenticated):
-    """Only property hosts can modify their properties."""
     def has_object_permission(self, request, view, obj):
-        # Allow read-only access for anyone (handled by ViewSet permissions usually)
-        # or allow modification/deletion only if the user is the host of the property.
         return request.method in permissions.SAFE_METHODS or obj.host == request.user
 
 
 class IsBookingOwner(IsAuthenticated):
-    """Only the booking owner can modify or cancel a booking."""
     def has_object_permission(self, request, view, obj):
-        # Allow read-only access or allow modification/deletion only if the user is the booking's owner.
         return request.method in permissions.SAFE_METHODS or obj.user == request.user
 
 
 class IsReviewOwner(IsAuthenticated):
-    """Only the author of a review can edit or delete it."""
     def has_object_permission(self, request, view, obj):
-        # Allow read-only access or allow modification/deletion only if the user is the review's author.
         return request.method in permissions.SAFE_METHODS or obj.user == request.user
 
 
 class IsMessageSender(IsAuthenticated):
-    """Only the sender of a message can edit or delete it."""
     def has_object_permission(self, request, view, obj):
-        # Allow read-only access or allow modification/deletion only if the user is the message's sender.
         return request.method in permissions.SAFE_METHODS or obj.sender == request.user
 
 
@@ -81,39 +93,28 @@ class IsMessageSender(IsAuthenticated):
 # -------------------------
 
 @extend_schema(
-    tags=["Users"], # Organizes this ViewSet under the "Users" tag in Swagger UI
-    summary="Retrieve user information", # Short summary for the endpoint group
-    description="Provides read-only access to user profiles. Intended for public profile data retrieval.", # Detailed description
+    tags=["Users"],
+    summary="Retrieve user information",
+    description="Provides read-only access to user profiles. Intended for public profile data retrieval.",
 )
 class UserViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    API endpoint that allows users to be viewed.
-    As a ReadOnlyModelViewSet, it will generate:
-    - GET /users/ (list all users)
-    - GET /users/{user_id}/ (retrieve a specific user)
-
-    The schema for request/response will be based on NestedUserSerializer.
-    """
     queryset = User.objects.all()
     serializer_class = NestedUserSerializer
-    permission_classes = [AllowAny] # drf-spectacular will infer no authentication/authorization is needed for these endpoints
+    permission_classes = [AllowAny]
 
 
 @extend_schema(
     tags=["Properties"],
     summary="Manage property listings",
     description="View, create, update, and delete properties. Only property owners can edit or delete their listings.",
-    # Responses can be defined globally for the ViewSet or per-method if needed.
     responses={
-        # Using `OpenApiResponse` with a serializer for automatic schema generation
         200: OpenApiResponse(
             response=NestedPropertySerializer,
             description="List of properties retrieved successfully.",
             examples=[
-                # Examples provide concrete data to illustrate response structure
                 OpenApiExample(
-                    "Property example", # Name of the example
-                    value={ # The example data (should match serializer schema)
+                    "Property example",
+                    value={
                         "property_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
                         "name": "Cozy Beachfront Villa",
                         "description": "Stunning views, private beach access.",
@@ -121,7 +122,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
                         "price_per_night": "500.00",
                         "created_at": "2024-01-01T10:00:00Z",
                         "updated_at": "2024-01-01T10:00:00Z",
-                        "host": { # Assuming NestedUserSerializer for host in NestedPropertySerializer
+                        "host": {
                             "user_id": "b2c3d4e5-f6a7-8901-2345-67890abcdef0",
                             "first_name": "Jane",
                             "last_name": "Doe",
@@ -130,68 +131,33 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
                             "role": "host"
                         }
                     },
-                    media_type="application/json", # Specify media type if not default
+                    media_type="application/json",
                 )
             ],
         ),
-        # You can add more specific responses for other status codes (e.g., 401, 403, 404)
         401: OpenApiResponse(description="Authentication credentials were not provided."),
         403: OpenApiResponse(description="Permission denied."),
         404: OpenApiResponse(description="Property not found."),
     }
 )
 class PropertyViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint that allows properties to be viewed, created, updated, or deleted.
-    As a ModelViewSet, it will generate:
-    - GET /properties/ (list all properties)
-    - POST /properties/ (create a new property)
-    - GET /properties/{property_id}/ (retrieve a specific property)
-    - PUT /properties/{property_id}/ (full update of a property)
-    - PATCH /properties/{property_id}/ (partial update of a property)
-    - DELETE /properties/{property_id}/ (delete a property)
-
-    The schema for request/response will be based on NestedPropertySerializer.
-    Permissions are dynamically set in `get_permissions`.
-    """
     queryset = Property.objects.all()
     serializer_class = NestedPropertySerializer
-    permission_classes = [IsAuthenticatedOrReadOnly] # Default for non-create/update/delete actions
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
     def perform_create(self, serializer):
-        """
-        Overrides the default create method to automatically assign the current
-        authenticated user as the 'host' of the new property.
-        drf-spectacular will infer that 'host' field is read-only in the request body
-        for POST operations due to this `perform_create` method.
-        """
         serializer.save(host=self.request.user)
 
     def get_queryset(self):
-        """
-        This method is not strictly necessary here unless you have specific filtering
-        logic for retrieving properties (e.g., only show user's own properties).
-        Currently, it returns all properties from the base queryset.
-        drf-spectacular generally infers the queryset for schema generation,
-        but complex filtering here won't be explicitly documented without
-        manual `@extend_schema` modifications.
-        """
         return super().get_queryset()
 
     def get_permissions(self):
-        """
-        Dynamically sets permission classes based on the action being performed.
-        drf-spectacular will interpret these permissions for each generated endpoint/method.
-        - 'create' requires IsAuthenticated.
-        - 'update', 'partial_update', 'destroy' require IsAuthenticated AND IsPropertyHost.
-        - Other actions (like 'list', 'retrieve') use the default IsAuthenticatedOrReadOnly.
-        """
         if self.action in ['update', 'partial_update', 'destroy']:
             self.permission_classes = [IsAuthenticated, IsPropertyHost]
         elif self.action == 'create':
             self.permission_classes = [IsAuthenticated]
         else:
-            self.permission_classes = [AllowAny] # Changed to AllowAny as per IsAuthenticatedOrReadOnly logic
+            self.permission_classes = [AllowAny]
         return [permission() for permission in self.permission_classes]
 
 
@@ -208,8 +174,18 @@ class PropertyViewSet(viewsets.ModelViewSet):
                     "Booking example",
                     value={
                         "booking_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
-                        "property": "some-property-id", # Assuming PropertySerializer's representation of property
-                        "user": "some-user-id",         # Assuming UserSerializer's representation of user
+                        "property": { # Full nested property object
+                            "property_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                            "name": "Cozy Beachfront Villa",
+                            "location": "Malibu, CA",
+                            "price_per_night": "500.00"
+                        },
+                        "user": { # Full nested user object
+                            "user_id": "b2c3d4e5-f6a7-8901-2345-67890abcdef0",
+                            "first_name": "Jane",
+                            "last_name": "Doe",
+                            "email": "jane.doe@example.com"
+                        },
                         "start_date": "2025-08-01",
                         "end_date": "2025-08-05",
                         "total_price": "800.00",
@@ -223,43 +199,20 @@ class PropertyViewSet(viewsets.ModelViewSet):
     }
 )
 class BookingViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint that allows bookings to be viewed, created, updated, or deleted.
-    This ViewSet will generate standard CRUD endpoints for bookings.
-    The `get_queryset` method dynamically filters bookings based on the requesting user's role
-    (owner of booking OR host of property). drf-spectacular cannot auto-document this complex
-    filtering; the description above helps.
-    """
     queryset = Booking.objects.all()
     serializer_class = BookingSerializer
-    permission_classes = [IsAuthenticated] # Default for all actions unless overridden below
+    permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        """
-        Assigns the current authenticated user as the 'user' (booker) for the new booking.
-        The 'user' field will be implicitly read-only for creation in the schema.
-        """
         serializer.save(user=self.request.user)
 
     def get_queryset(self):
-        """
-        Custom queryset to ensure users can only see their own bookings OR
-        bookings made for properties they host.
-        `Q(user=user)`: bookings where the requesting user is the booker.
-        `Q(property__host=user)`: bookings for properties where the requesting user is the host.
-        `distinct()`: handles cases where a user might be both (though unlikely for a single booking).
-        """
         user = self.request.user
         if user.is_authenticated:
             return Booking.objects.filter(Q(user=user) | Q(property__host=user)).distinct()
-        return Booking.objects.none() # Return empty queryset if user is not authenticated
+        return Booking.objects.none()
 
     def get_permissions(self):
-        """
-        Dynamically sets permission classes for Booking actions.
-        - 'update', 'partial_update', 'destroy' require IsAuthenticated AND IsBookingOwner.
-        - Other actions (list, retrieve, create) require IsAuthenticated.
-        """
         if self.action in ['update', 'partial_update', 'destroy']:
             self.permission_classes = [IsAuthenticated, IsBookingOwner]
         else:
@@ -280,10 +233,18 @@ class BookingViewSet(viewsets.ModelViewSet):
                     "Payment example",
                     value={
                         "payment_id": "e6f7g8h9-i0j1-2345-6789-0abcdef12345",
-                        "booking": "some-booking-id", # Assuming BookingSerializer's representation of booking
+                        "booking": { # Nested booking object
+                            "booking_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                            "start_date": "2025-08-01",
+                            "end_date": "2025-08-05",
+                            "total_price": "800.00"
+                        },
                         "amount": "400.00",
                         "payment_date": "2025-08-01T10:00:00Z",
-                        "payment_method": "credit_card"
+                        "payment_method": "chapa",
+                        "chapa_transaction_id": "chapa-tx-12345",
+                        "status": "COMPLETED",
+                        "chapa_status_text": "Payment successful"
                     },
                     media_type="application/json",
                 )
@@ -292,36 +253,17 @@ class BookingViewSet(viewsets.ModelViewSet):
     }
 )
 class PaymentViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint that allows payments to be viewed, created, updated, or deleted.
-    This ViewSet generates standard CRUD endpoints for payments.
-    The `get_queryset` limits access to payments related to the user's bookings
-    or properties they host.
-    Update/delete actions are restricted to admin users.
-    """
     queryset = Payment.objects.all()
     serializer_class = PaymentSerializer
-    permission_classes = [IsAuthenticated] # Default for all actions unless overridden below
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        """
-        Custom queryset to ensure users can only see payments for their bookings
-        or payments for properties they host.
-        `Q(booking__user=user)`: payments for bookings made by the requesting user.
-        `Q(booking__property__host=user)`: payments for bookings on properties where the requesting user is the host.
-        """
         user = self.request.user
         if user.is_authenticated:
             return Payment.objects.filter(Q(booking__user=user) | Q(booking__property__host=user)).distinct()
         return Payment.objects.none()
 
     def get_permissions(self):
-        """
-        Dynamically sets permission classes for Payment actions.
-        - 'create' requires IsAuthenticated.
-        - 'update', 'partial_update', 'destroy' require IsAuthenticated AND IsAdminUser.
-        - Other actions (list, retrieve) require IsAuthenticated.
-        """
         if self.action == 'create':
             self.permission_classes = [IsAuthenticated]
         elif self.action in ['update', 'partial_update', 'destroy']:
@@ -344,8 +286,18 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     "Review example",
                     value={
                         "review_id": "f7g8h9i0-j1k2-3456-7890-1abcdef23456",
-                        "property": "some-property-id", # Assuming PropertySerializer's representation of property
-                        "user": "some-user-id",         # Assuming UserSerializer's representation of user
+                        "property": {
+                            "property_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                            "name": "Cozy Beachfront Villa",
+                            "location": "Malibu, CA",
+                            "price_per_night": "500.00"
+                        },
+                        "user": {
+                            "user_id": "b2c3d4e5-f6a7-8901-2345-67890abcdef0",
+                            "first_name": "Jane",
+                            "last_name": "Doe",
+                            "email": "jane.doe@example.com"
+                        },
                         "rating": 5,
                         "comment": "Absolutely loved this place! Clean, spacious, and amazing host.",
                         "created_at": "2025-07-15T12:00:00Z"
@@ -357,28 +309,14 @@ class PaymentViewSet(viewsets.ModelViewSet):
     }
 )
 class ReviewViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint that allows reviews to be viewed, created, updated, or deleted.
-    This ViewSet generates standard CRUD endpoints for reviews.
-    Unauthenticated users can view reviews, while creation/modification is restricted.
-    """
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly] # Default for all actions
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
     def perform_create(self, serializer):
-        """
-        Assigns the current authenticated user as the author of the new review.
-        The 'user' field will be implicitly read-only for creation in the schema.
-        """
         serializer.save(user=self.request.user)
 
     def get_permissions(self):
-        """
-        Dynamically sets permission classes for Review actions.
-        - 'update', 'partial_update', 'destroy' require IsAuthenticated AND IsReviewOwner.
-        - Other actions (list, retrieve, create) allow IsAuthenticatedOrReadOnly.
-        """
         if self.action in ['update', 'partial_update', 'destroy']:
             self.permission_classes = [IsAuthenticated, IsReviewOwner]
         else:
@@ -399,12 +337,21 @@ class ReviewViewSet(viewsets.ModelViewSet):
                     "Top-level message example",
                     value={
                         "message_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
-                        "sender": "sender-user-id",
-                        "recipient": "recipient-user-id",
+                        "sender": {
+                            "user_id": "b2c3d4e5-f6a7-8901-2345-67890abcdef0",
+                            "first_name": "Jane",
+                            "last_name": "Doe",
+                            "email": "jane.doe@example.com"
+                        },
+                        "receiver": {
+                            "user_id": "c3d4e5f6-a7b8-9012-3456-7890abcdef01",
+                            "first_name": "John",
+                            "last_name": "Smith",
+                            "email": "john.smith@example.com"
+                        },
                         "message_body": "Hi, is the property available for these dates?",
                         "sent_at": "2025-08-01T14:30:00Z",
-                        "parent_message": None,
-                        "replies": []
+                        "parent_message": None # No parent message for top-level
                     },
                     media_type="application/json",
                 ),
@@ -412,12 +359,16 @@ class ReviewViewSet(viewsets.ModelViewSet):
                     "Reply message example",
                     value={
                         "message_id": "f1e2d3c4-b5a6-9876-5432-10fedcba9876",
-                        "sender": "recipient-user-id", # Reply from original recipient
-                        "recipient": None, # Recipient might be null for a pure reply in a thread
+                        "sender": {
+                            "user_id": "c3d4e5f6-a7b8-9012-3456-7890abcdef01",
+                            "first_name": "John",
+                            "last_name": "Smith",
+                            "email": "john.smith@example.2.com"
+                        },
+                        "receiver": None, # Recipient might be null for a pure reply in a thread
                         "message_body": "Yes, it is! What dates were you thinking?",
                         "sent_at": "2025-08-01T14:35:00Z",
                         "parent_message": "a1b2c3d4-e5f6-7890-1234-567890abcdef", # ID of the parent message
-                        "replies": []
                     },
                     media_type="application/json",
                 )
@@ -426,47 +377,261 @@ class ReviewViewSet(viewsets.ModelViewSet):
     }
 )
 class MessageViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint that allows messages to be viewed, created, updated, or deleted.
-    This ViewSet generates standard CRUD endpoints for messages.
-    It supports retrieving messages where the user is either the sender or the recipient.
-    The `parent_message` field (in models) and `replies` field (in serializer)
-    enable threaded conversations.
-    """
     queryset = Message.objects.all()
     serializer_class = MessageSerializer
-    permission_classes = [IsAuthenticated] # Default for all actions
+    permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        """
-        Assigns the current authenticated user as the sender of the new message.
-        The 'sender' field will be implicitly read-only for creation in the schema.
-        """
         serializer.save(sender=self.request.user)
 
     def get_queryset(self):
-        """
-        Custom queryset to ensure users can only see messages they have sent or received.
-        If the Message model has `parent_message` for threading, you might further
-        refine this to fetch only top-level messages or entire threads efficiently,
-        potentially using `prefetch_related` as discussed in previous contexts.
-        For now, it gets all messages where user is sender or recipient.
-        """
         user = self.request.user
         if user.is_authenticated:
-            # Note: If implementing threading strictly, you might want a separate view for top-level
-            # messages and then a detail view for a thread, or complex prefetching.
             return Message.objects.filter(Q(sender=user) | Q(recipient=user)).distinct()
         return Message.objects.none()
 
     def get_permissions(self):
-        """
-        Dynamically sets permission classes for Message actions.
-        - 'update', 'partial_update', 'destroy' require IsAuthenticated AND IsMessageSender.
-        - Other actions (list, retrieve, create) require IsAuthenticated.
-        """
         if self.action in ['update', 'partial_update', 'destroy']:
             self.permission_classes = [IsAuthenticated, IsMessageSender]
         else:
             self.permission_classes = [IsAuthenticated]
         return [permission() for permission in self.permission_classes]
+
+
+# --- Chapa Payment Integration Views ---
+
+@extend_schema(
+    tags=["Chapa Payments"],
+    summary="Initiate a Chapa payment for a booking",
+    description="This endpoint starts the payment process with Chapa. It creates a pending payment record and returns Chapa's checkout URL, to which the user should be redirected.",
+    request=inline_serializer(
+        name='InitiateChapaPaymentRequest',
+        fields={
+            'booking_id': serializers.UUIDField(help_text="UUID of the booking to pay for."),
+            'amount': serializers.DecimalField(max_digits=10, decimal_places=2, help_text="Amount to pay for the booking.")
+        }
+    ),
+    responses={
+        200: OpenApiResponse(
+            response=inline_serializer(
+                name='InitiateChapaPaymentSuccessResponse',
+                fields={
+                    'status': serializers.CharField(),
+                    'checkout_url': serializers.URLField(),
+                    'tx_ref': serializers.CharField(),
+                }
+            ),
+            description="Payment initiated successfully. Redirect user to `checkout_url`."
+        ),
+        400: OpenApiResponse(description="Invalid request data or booking not found."),
+        401: OpenApiResponse(description="Authentication credentials were not provided."),
+        500: OpenApiResponse(description="Internal server error or Chapa API connectivity issue.")
+    }
+)
+@csrf_exempt # In production, use DRF's APIView or appropriate CSRF protection.
+def initiate_chapa_payment(request):
+    if request.method == 'POST':
+        if not request.user.is_authenticated:
+            return JsonResponse({'error': 'Authentication required.'}, status=401)
+        
+        try:
+            data = json.loads(request.body)
+            booking_id = data.get('booking_id')
+            amount = data.get('amount')
+
+            if not booking_id or not amount:
+                return JsonResponse({'error': 'Booking ID and amount are required.'}, status=400)
+            
+            # Retrieve the booking to get user details and validate amount
+            try:
+                booking = Booking.objects.get(booking_id=booking_id, user=request.user)
+                # You might want to enforce that amount == booking.total_price here
+                if float(amount) != float(booking.total_price):
+                    # Consider if partial payments are allowed or if this is a strict mismatch
+                    return JsonResponse({'error': f'Amount {amount} does not match booking total price {booking.total_price}.'}, status=400)
+
+            except Booking.DoesNotExist:
+                return JsonResponse({'error': 'Booking not found or you do not own this booking.'}, status=404)
+
+            # Generate a unique transaction reference for Chapa.
+            # It's crucial this is unique for each payment attempt and can be mapped back to your system.
+            # Using UUID for high uniqueness.
+            tx_ref = f"{booking.booking_id.hex}-{uuid.uuid4().hex}"
+
+            # Create a pending payment record BEFORE calling Chapa
+            # This links our internal record to the upcoming Chapa transaction
+            # and helps track failed initiations.
+            payment = Payment.objects.create(
+                booking=booking,
+                amount=amount,
+                payment_method=Payment.PaymentMethodChoices.CHAPA, # Set as Chapa
+                chapa_transaction_id=tx_ref, # Use our tx_ref as Chapa's ID initially, will be updated later
+                status=Payment.ChapaPaymentStatusChoices.PENDING,
+                chapa_status_text='Initiation pending'
+            )
+
+            headers = {
+                "Authorization": f"Bearer {settings.CHAPA_SECRET_KEY}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "amount": str(amount), # Chapa expects amount as string
+                "currency": "ETB", # Or dynamic if you support other currencies
+                "email": booking.user.email,
+                "first_name": booking.user.first_name,
+                "last_name": booking.user.last_name,
+                "tx_ref": tx_ref, # Your unique transaction reference
+                "callback_url": request.build_absolute_uri(f'/api/payments/chapa/verify/{tx_ref}/'),
+                "return_url": request.build_absolute_uri('/payment-status/'), # A generic landing page after Chapa redirect
+                "customization": {
+                    "title": "Travel Booking Payment",
+                    "description": f"Payment for booking {booking.booking_id}"
+                }
+            }
+            
+            print(f"DEBUG: Initiating Chapa payment for tx_ref: {tx_ref} with payload: {payload}")
+            chapa_response = requests.post(CHAPA_INITIATE_URL, headers=headers, json=payload)
+            chapa_response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+            
+            response_data = chapa_response.json()
+            print(f"DEBUG: Chapa initiation response: {response_data}")
+
+            if response_data.get('status') == 'success':
+                checkout_url = response_data['data']['checkout_url']
+                # Chapa's `transaction_id` might be different from `tx_ref` but `tx_ref` is what we use to verify
+                # payment.chapa_transaction_id = response_data['data'].get('transaction_id', tx_ref) # Update with Chapa's official transaction_id if provided
+                payment.chapa_status_text = response_data.get('message', 'Payment initiation successful, awaiting completion.')
+                payment.save()
+
+                return JsonResponse({'status': 'success', 'checkout_url': checkout_url, 'tx_ref': tx_ref})
+            else:
+                payment.status = Payment.ChapaPaymentStatusChoices.FAILED
+                payment.chapa_status_text = response_data.get('message', 'Failed to initiate payment with Chapa.')
+                payment.save()
+                return JsonResponse({'status': 'error', 'message': payment.chapa_status_text}, status=400)
+
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON body.'}, status=400)
+        except requests.exceptions.RequestException as e:
+            # Handle network errors or API call failures
+            print(f"ERROR: Chapa API request failed during initiation: {e}")
+            # Mark payment as failed due to API issue
+            if 'payment' in locals() and payment.status == Payment.ChapaPaymentStatusChoices.PENDING:
+                payment.status = Payment.ChapaPaymentStatusChoices.FAILED
+                payment.chapa_status_text = f"API Request Error: {e}"
+                payment.save()
+            return JsonResponse({'status': 'error', 'message': 'Could not connect to payment gateway or API error.'}, status=500)
+        except Exception as e:
+            print(f"ERROR: An unexpected error occurred during payment initiation: {e}")
+            if 'payment' in locals() and payment.status == Payment.ChapaPaymentStatusChoices.PENDING:
+                payment.status = Payment.ChapaPaymentStatusChoices.FAILED
+                payment.chapa_status_text = f"Internal Error: {e}"
+                payment.save()
+            return JsonResponse({'status': 'error', 'message': f'An internal error occurred: {e}'}, status=500)
+    return JsonResponse({'error': 'Invalid request method. Only POST is allowed.'}, status=405)
+
+
+@extend_schema(
+    tags=["Chapa Payments"],
+    summary="Verify a Chapa payment status via callback",
+    description="This endpoint is called by Chapa (or by your frontend after redirection) to verify the final status of a payment. It queries Chapa's API and updates the payment record accordingly. Triggers confirmation email on success.",
+    parameters=[
+        OpenApiParameter(
+            name='tx_ref',
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.PATH,
+            description='The transaction reference ID generated by your system during payment initiation.'
+        )
+    ],
+    responses={
+        200: OpenApiResponse(
+            response=inline_serializer(
+                name='VerifyChapaPaymentSuccessResponse',
+                fields={
+                    'status': serializers.CharField(),
+                    'message': serializers.CharField(),
+                    'payment_status': serializers.CharField(), # e.g., 'COMPLETED'
+                }
+            ),
+            description="Payment verification successful. Status updated."
+        ),
+        302: OpenApiResponse(description="Redirects to a success or failure page after processing."), # For the redirect
+        404: OpenApiResponse(description="Payment record not found."),
+        500: OpenApiResponse(description="Internal server error or Chapa API connectivity issue.")
+    }
+)
+@csrf_exempt # In production, use DRF's APIView or appropriate CSRF protection.
+def verify_chapa_payment(request, tx_ref):
+    # This endpoint is accessed when Chapa redirects the user back to your site.
+    # It should ideally be idempotent: multiple calls for the same tx_ref should not cause issues.
+    
+    try:
+        payment = get_object_or_404(Payment, chapa_transaction_id=tx_ref)
+
+        # IMPORTANT: Avoid re-processing if already completed or failed
+        if payment.status in [Payment.ChapaPaymentStatusChoices.COMPLETED, Payment.ChapaPaymentStatusChoices.FAILED]:
+            print(f"DEBUG: Payment {tx_ref} already processed with status: {payment.status}. Skipping re-verification.")
+            # Redirect to a status page that shows the current status
+            return HttpResponseRedirect(f'/payment-status/?tx_ref={tx_ref}&status={payment.status.lower()}')
+
+        headers = {
+            "Authorization": f"Bearer {settings.CHAPA_SECRET_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        print(f"DEBUG: Verifying Chapa payment for tx_ref: {tx_ref}")
+        chapa_response = requests.get(f"{CHAPA_VERIFY_URL}{tx_ref}", headers=headers)
+        chapa_response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+        
+        response_data = chapa_response.json()
+        print(f"DEBUG: Chapa verification response: {response_data}")
+
+        # Chapa's verification response structure:
+        # { "status": "success", "message": "Payment details", "data": { ... payment info ... "status": "success", ... } }
+        if response_data.get('status') == 'success' and response_data['data'].get('status') == 'success':
+            payment.status = Payment.ChapaPaymentStatusChoices.COMPLETED
+            payment.chapa_status_text = response_data['data'].get('status', 'Payment completed successfully.')
+            payment.save()
+
+            # Update booking status if payment is successful
+            if payment.booking.status != Booking.BookingStatusChoices.CONFIRMED:
+                payment.booking.status = Booking.BookingStatusChoices.CONFIRMED
+                payment.booking.save()
+                print(f"DEBUG: Booking {payment.booking.booking_id} status updated to CONFIRMED.")
+
+            # Trigger email sending in background using Celery
+            # Get the actual email from the associated booking's user
+            recipient_email = payment.booking.user.email
+            send_payment_confirmation_email.delay(recipient_email, payment.amount, payment.booking.booking_id)
+
+            # Redirect user to a success page
+            return HttpResponseRedirect('/payment-success/')
+        else:
+            # Payment failed or is not successful from Chapa's perspective
+            payment.status = Payment.ChapaPaymentStatusChoices.FAILED
+            # Try to get a more specific message from 'data' first, then from top-level 'message'
+            payment.chapa_status_text = response_data['data'].get('message', response_data.get('message', 'Payment verification failed.'))
+            payment.save()
+            print(f"DEBUG: Payment {tx_ref} failed. Status: {payment.chapa_status_text}")
+            # Redirect user to a failure page, possibly with error details
+            return HttpResponseRedirect(f'/payment-fail/?tx_ref={tx_ref}&status={payment.chapa_status_text}')
+
+    except Payment.DoesNotExist:
+        print(f"ERROR: Payment record not found for tx_ref: {tx_ref}")
+        return JsonResponse({'status': 'error', 'message': 'Payment record not found.'}, status=404)
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: Chapa API verification failed for tx_ref {tx_ref}: {e}")
+        # If payment exists and is pending, mark it as failed due to verification API error
+        if 'payment' in locals() and payment.status == Payment.ChapaPaymentStatusChoices.PENDING:
+            payment.status = Payment.ChapaPaymentStatusChoices.FAILED
+            payment.chapa_status_text = f"API Verification Error: {e}"
+            payment.save()
+        return HttpResponseRedirect(f'/payment-fail/?tx_ref={tx_ref}&error=api_error')
+    except Exception as e:
+        print(f"ERROR: An unexpected error occurred during payment verification for tx_ref {tx_ref}: {e}")
+        # Mark payment as failed due to internal error if still pending
+        if 'payment' in locals() and payment.status == Payment.ChapaPaymentStatusChoices.PENDING:
+            payment.status = Payment.ChapaPaymentStatusChoices.FAILED
+            payment.chapa_status_text = f"Internal Error: {e}"
+            payment.save()
+        return HttpResponseRedirect(f'/payment-fail/?tx_ref={tx_ref}&error=internal_error')

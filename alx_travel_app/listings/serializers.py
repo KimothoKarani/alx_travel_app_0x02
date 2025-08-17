@@ -1,4 +1,5 @@
 # alx_travel_app/listings/serializers.py
+from random import choice
 
 from rest_framework import serializers
 from .models import User, Property, Booking, Message, Review, Payment
@@ -181,6 +182,7 @@ class ReviewSerializer(serializers.ModelSerializer):
 class PaymentSerializer(serializers.ModelSerializer):
     """
     Serializer for recording and retrieving payment details.
+    Updated for Chapa Integration.
     """
     booking = BookingSerializer(read_only=True, help_text="Details of the related booking (read-only).")
     booking_id = serializers.PrimaryKeyRelatedField(
@@ -192,12 +194,32 @@ class PaymentSerializer(serializers.ModelSerializer):
     payment_date = serializers.DateTimeField(read_only=True, help_text="Timestamp when the payment was recorded.")
     payment_method = serializers.ChoiceField(
         choices=Payment.PaymentMethodChoices.choices,
-        help_text="Payment method used (credit_card, PayPal, or Stripe)."
+        help_text="Payment method used (Chapa, credit_card, PayPal, or Stripe)."
+    )
+
+    # New fields
+    chapa_transaction_id = serializers.ChoiceField(
+        read_only=True,
+        help_text="Chapa's unique transaction id (read-only)."
+    )
+    status = serializers.CharField(
+        choice=Payment.ChapaPaymentStatusChoices.choices,
+        read_only=True,
+        help_text="The status of the payment (PENDING, COMPLETE, FAILED, REJECTED)."
+    )
+    chapa_status_text = serializers.CharField(
+        read_only=True,
+        allow_null=True,
+        help_text="Detailed status message from Chapa."
     )
 
     class Meta:
         model = Payment
         fields = [
-            'payment_id', 'booking', 'booking_id', 'amount', 'payment_date', 'payment_method'
+            'payment_id', 'booking', 'booking_id', 'amount', 'payment_date',
+            'payment_method', 'chapa_transaction_id', 'status', 'chapa_status_text'
         ]
-        read_only_fields = ['payment_id', 'booking', 'payment_date']
+        read_only_fields = [
+            'payment_id', 'booking', 'payment_date',
+            'chapa_transaction_id', 'status', 'chapa_status_text' # All chapa related fields are read-only from API consumer perspective
+        ]

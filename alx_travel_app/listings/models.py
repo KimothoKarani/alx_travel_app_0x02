@@ -1,6 +1,8 @@
 # alx_travel_app/listings/models.py
 
 import uuid
+from enum import unique
+
 from django.db import models
 from django.contrib.auth.models import AbstractUser  # For custom User model
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -27,9 +29,9 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
 
-        if extra_fields.get('is_staff') is not True:
+        if extra_fields.get('is_staff'):
             raise ValueError('Superuser must have is_staff=True.')
-        if extra_fields.get('is_superuser') is not True:
+        if extra_fields.get('is_superuser'):
             raise ValueError('Superuser must have is_superuser=True.')
 
         return self.create_user(email, password, **extra_fields)
@@ -175,13 +177,48 @@ class Payment(models.Model):
     Records payment details for a booking.
     """
     payment_id = models.UUIDField(primary_key=True, default=uuid.uuid4,
-                                  editable=False)  # Removed redundant unique=True, db_index=True
+                                  editable=False)
     booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='payments')  # booking_id in spec
     amount = models.DecimalField(max_digits=10, decimal_places=2, null=False)
     payment_date = models.DateTimeField(auto_now_add=True)  # Matches 'TIMESTAMP, DEFAULT CURRENT_TIMESTAMP'
 
+    # New fields for Chapa integration
+    chapa_transaction_id = models.CharField(
+        max_length=100,
+        unique=True,
+        null=True, # Can be null initially before Chapa returns it
+        blank=True,
+        help_text="Chapa's unique transaction identifier (tx_ref or transaction_id)."
+    )
+
+    # status from Chapa's perspective
+    class ChapaPaymentStatusChoices(models.TextChoices):
+        PENDING = 'PENDING', 'Pending'
+        COMPLETED = 'COMPLETED', 'Completed'
+        FAILED = 'FAILED', 'Failed'
+        CANCELED = 'CANCELLED', 'Canceled' # If user cancels on Chapa's page
+        REVERSED = 'REVERSED', 'Reversed' # For refunds/chargebacks
+
+    status = models.CharField(
+        max_length=10,
+        choices=ChapaPaymentStatusChoices.choices,
+        default=ChapaPaymentStatusChoices.PENDING,
+        null=False,
+        help_text="Chapa's payment status as reported by Chapa."
+    )
+
+    # Storing Chapa's specific status message/description
+    chapa_status_text = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Chapa's payment status as reported by Chapa."
+    )
+
+
     # payment_method: ENUM (credit_card, paypal, stripe), NOT NULL
     class PaymentMethodChoices(models.TextChoices):
+        CHAPA = 'chapa', 'Chapa Payment Gateway'
         CREDIT_CARD = 'credit_card', 'Credit Card'
         PAYPAL = 'paypal', 'PayPal'
         STRIPE = 'stripe', 'Stripe'
@@ -189,7 +226,9 @@ class Payment(models.Model):
     payment_method = models.CharField(
         max_length=20,
         choices=PaymentMethodChoices.choices,
+        default=PaymentMethodChoices.CHAPA,
         null=False,
+        help_text="The payment method or gateway used."
     )
 
     class Meta:
@@ -198,10 +237,12 @@ class Payment(models.Model):
         ordering = ['-payment_date']
         indexes = [
             models.Index(fields=['booking']),  # Additional index on booking
+            models.Index(fields=['chapa_transaction_id']), # For quick lookup by Chapa ID
+            models.Index(fields=['status']), # For querying payment by status
         ]
 
     def __str__(self):
-        return f"Payment {self.payment_id} for Booking {self.booking.booking_id} - {self.amount}"
+        return f"Payment {self.payment_id} for Booking {self.booking.booking_id} - {self.amount} ({self.status})"
 
 
 # --- Review Model ---

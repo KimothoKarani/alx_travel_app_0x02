@@ -4,6 +4,7 @@ __pycache__/
 .sqlite3
 .log
 .env
+db.sqlite3
 
 # macOS / Linux / Windows
 .DS_Store
@@ -17,7 +18,7 @@ alx_venv/
 
 # VSCode / PyCharm
 .vscode/
-.idea/
+../.idea/
 
 # Django migrations
 /migrations/*.py
