@@ -1,250 +1,337 @@
-# ALX Travel App API (0x01: Listings and Bookings)`
+# ALX Travel App (0x02): Secure Travel Booking with Chapa Payment Integration
 
-## Project Overview
+## Overview
 
-This project is the first iteration of a travel application API built with Django and Django REST Framework (DRF). It focuses on providing a robust backend for managing property listings, user bookings, payments, reviews, and a basic messaging system.
-
-This particular version (`0x01`) emphasizes:
-- **Core API Development:** Implementing standard CRUD (Create, Read, Update, Delete) operations for key travel entities.
-- **RESTful Design:** Adhering to REST principles for clear and consistent API endpoints.
-- **Authentication:** Securing API endpoints using JWT (JSON Web Tokens).
-- **Authorization:** Implementing custom permission classes to ensure users can only access and modify data they own or are authorized for.
-- **API Documentation:** Providing interactive API documentation using Swagger UI.
+This project is a Django-based travel booking application, an evolution of alx\_travel\_app\_0x01. The primary focus of this iteration (0x02) is the robust integration of the **Chapa Payment Gateway** to enable secure and efficient online payment processing for bookings. The application supports user authentication, property listings, booking management, reviews, messaging, and now, a complete payment lifecycle including initiation, verification, and automated email confirmations.
 
 ## Features
 
-*   **User Management:**
-    *   Custom User model (`listings.User`) with email as username, UUID primary keys, and roles (Guest, Host, Admin).
-    *   API endpoints for user registration, login (JWT token obtain), and token refresh/verification.
-*   **Property Management (`/api/properties/`):**
-    *   Create, view, update, and delete property listings.
-    *   Hosts can manage their own properties. Anyone can view listings.
-*   **Booking Management (`/api/bookings/`):**
-    *   Create, view, update, and delete bookings.
-    *   Guests can create bookings and view their own. Hosts can view bookings made for their properties.
-    *   Only the guest who created the booking can modify or cancel it.
-*   **Payment Management (`/api/payments/`):**
-    *   View and create payments related to bookings.
-    *   Access is restricted to users involved in the booking (guest or host).
-    *   Update/delete payments are typically restricted (e.g., to admins).
-*   **Review Management (`/api/reviews/`):**
-    *   Create, view, update, and delete reviews for properties.
-    *   Anyone can view reviews. Authenticated users can create reviews. Only review authors can modify or delete their own reviews.
-*   **Messaging System (`/api/messages/`, `/api/message-history/`, `/api/notifications/`):**
-    *   Send and receive direct messages between users.
-    *   Messages include threading (`parent_message`), read status (`is_read`), and edit history (`edited`, `edited_at`).
-    *   **Signal-based Automation:**
-        *   Automatically creates a `Notification` when a new message is sent.
-        *   Automatically logs old content to `MessageHistory` when a message is edited.
-        *   Automatically cleans up user-related data (messages, notifications, history) upon user account deletion.
-    *   Users can only view messages they sent or received. Only senders can edit/delete their messages.
-*   **API Security:**
-    *   **JWT Authentication:** All API endpoints are secured using JSON Web Tokens.
-    *   **Custom Permissions:** Fine-grained access control ensuring data privacy and integrity based on user roles and ownership.
-    *   **CORS Headers:** Configured for cross-origin resource sharing, essential for separate frontend applications.
-*   **API Documentation (Swagger UI):**
-    *   Interactive API documentation generated automatically by `drf-spectacular`.
-*   **Optimized ORM Queries:**
-    *   Utilizes `select_related()` and `prefetch_related()` for efficient fetching of related data, reducing database queries.
-    *   Implements custom managers (e.g., `UnreadMessagesManager`) and uses `.only()` for performance optimization.
-    *   Handles recursive querying for threaded messages display.
-*   **Custom Middleware:**
-    *   **Request Logging:** Logs all incoming user requests to a file.
-    *   **Time-Based Access Restriction:** Restricts chat access to specific hours.
-    *   **Rate Limiting:** Limits the number of messages a user can send within a time window based on IP.
-    *   **Role-Based Access:** Enforces specific actions for 'admin' users.
+*   **User Management:** Secure user registration, authentication (JWT), and profile management with distinct roles (Guest, Host, Admin).
+    
+*   **Property Listings:** Create, view, update, and delete property listings with detailed information (name, description, location, price per night).
+    
+*   **Booking System:** Users can book properties, and hosts can manage bookings for their properties.
+    
+*   **Reviews & Ratings:** Users can leave reviews and ratings for properties they have booked.
+    
+*   **Messaging System:** Threaded messaging for communication between users (e.g., guest-to-host).
+    
+*   **Comprehensive Chapa Payment Integration:**
+    
+    *   **Secure Credential Management:** API keys stored safely using environment variables (dotenv).
+        
+    *   **Payment Model:** Dedicated Django model (Payment) for tracking transaction details, status, and Chapa's unique identifiers.
+        
+    *   **Payment Initiation API:** Endpoint to initiate payments with Chapa, generating a secure checkout URL.
+        
+    *   **Payment Verification API:** Callback endpoint to verify payment status with Chapa after user redirection.
+        
+    *   **Payment Status Handling:** Updates internal payment and booking records based on Chapa's response (Pending, Completed, Failed).
+        
+    *   **Asynchronous Email Notifications:** Uses Celery to send automated payment confirmation emails in the background, ensuring a responsive user experience.
+        
+    
+*   **API Documentation:** Self-generating OpenAPI (Swagger UI/Redoc) documentation using drf-spectacular.
+    
 
-## Project Structure
-
-
-.  
-├── alx\_travel\_app\_0x01/ # Root directory for this project iteration  
-│ ├── .env # Environment variables (e.g., SECRET\_KEY)  
-│ ├── manage.py # Django's command-line utility  
-│ ├── requirements.txt # Project dependencies  
-│ ├── post\_man-Collections # Exported Postman Collection for API testing  
-│ ├── requests.log # Log file generated by custom middleware  
-│ ├── alx\_travel\_app/ # Django Project folder (main project settings/urls)  
-│ │ ├── **init**.py  
-│ │ ├── settings.py # Project settings (DRF, JWT, CORS, Custom User, etc.)  
-│ │ ├── urls.py # Main URL dispatcher (includes API schema, JWT paths)  
-│ │ ├── wsgi.py  
-│ │ └── asgi.py  
-│ └── listings/ # Django App folder (contains all models, views, etc.)  
-│ ├── **init**.py  
-│ ├── admin.py # Django Admin configuration for all models  
-│ ├── apps.py # App configuration (for signal registration)  
-│ ├── migrations/ # Database migration files  
-│ │ └── **init**.py  
-│ ├── models.py # All database models (User, Property, Booking, Payment, Review, Message, MessageHistory, Notification)  
-│ ├── permissions.py # Custom DRF permission classes  
-│ ├── serializers.py # DRF Serializers for API data transformation  
-│ ├── signals.py # Django signal receivers  
-│ ├── urls.py # API URL routing for ViewSets  
-│ └── views.py # DRF ViewSets for API endpoints  
-├── venv\_travel\_01/ # Python Virtual Environment  
-└── README.md # This file
+## Project Structure (Key Files)
 
 
 
-## API Endpoints and Documentation
+    alx_travel_app_0x02/
+    ├── alx_travel_app/
+    │   ├── __init__.py           # Includes Celery app setup
+    │   ├── settings.py           # Django settings, Chapa credentials, Celery config
+    │   ├── urls.py               # Main project URL configurations (admin, API, JWT, docs)
+    │   └── celery.py             # Celery application instance definition
+    ├── listings/
+    │   ├── models.py             # Defines Django models (User, Property, Booking, Payment, Review, Message) - Payment model updated
+    │   ├── serializers.py        # DRF serializers for API data validation and serialization - PaymentSerializer updated
+    │   ├── views.py              # DRF ViewSets for CRUD operations + Chapa payment initiation/verification views
+    │   ├── urls.py               # App-specific URL patterns (DRF router, Chapa endpoints)
+    │   └── tasks.py              # (Optional, but good practice if more Celery tasks are added)
+    ├── .env.example              # Example .env file (DO NOT COMMIT YOUR ACTUAL .env)
+    ├── .gitignore                # Ensures sensitive files (.env) are not committed
+    └── manage.py                 # Django's command-line utility
 
-The API endpoints follow RESTful conventions and are accessible under /api/.
+## Setup and Installation
 
-### API Documentation (Swagger UI)
+Follow these steps to get the project running on your local machine.
 
-Interactive API documentation is available via Swagger UI.
+### Prerequisites
 
-*   **Swagger UI:** http://127.0.0.1:8000/api/schema/swagger-ui/
+*   Python 3.8+
     
-*   **Raw OpenAPI Schema (YAML/JSON):** http://127.0.0.1:8000/api/schema/
+*   PostgreSQL
     
-
-Use the "Authorize" button in Swagger UI to provide a JWT Access Token (obtained from /api/token/) to test protected endpoints.
-
-### Authentication Endpoints (JWT)
-
-*   **Obtain Tokens:** POST /api/token/
-    
-    *   **Body:** {"username": "user\_email", "password": "user\_password"}
-        
-    *   **Returns:** {"access": "...", "refresh": "..."}
-        
-    
-*   **Refresh Token:** POST /api/token/refresh/
-    
-    *   **Body:** {"refresh": "..."}
-        
-    *   **Returns:** {"access": "..."}
-        
-    
-*   **Verify Token:** POST /api/token/verify/
-    
-    *   **Body:** {"token": "..."}
-        
-    *   **Returns:** Status: 200 OK if valid, 401 Unauthorized if invalid.
-        
+*   Redis (for Celery message broker)
     
 
-### Core API Endpoints
+### 1\. Clone the Repository
 
-All API endpoints require a valid JWT Access Token in the Authorization: Bearer <token> header, unless otherwise specified.
 
-*   **Users:** (/api/users/)
+
+    git clone https://github.com/yourusername/alx_travel_app_0x02.git
+    cd alx_travel_app_0x02
+
+### 2\. Set Up a Virtual Environment
+
+It's highly recommended to use a virtual environment to manage dependencies.
+
+
+
+    python3 -m venv venv
+    source venv/bin/activate # On Windows: .\venv\Scripts\activate
+
+### 3\. Install Dependencies
+
+Install all required Python packages:
+
+
+
+    pip install -r requirements.txt
+    # If requirements.txt is not provided, manually install:
+    pip install Django djangorestframework djangorestframework-simplejwt drf-spectacular psycopg2-binary python-dotenv requests celery redis
+
+### 4\. Database Setup (PostgreSQL)
+
+*   Create a PostgreSQL database for your project.
     
-    *   GET /api/users/: List all users (read-only).
-        
-    *   GET /api/users/{id}/: Retrieve a specific user (read-only).
-        
+    codeSQL
     
-*   **Properties:** (/api/properties/)
+        CREATE DATABASE alx_travel_app;
+        CREATE USER alx_user WITH PASSWORD 'your_password';
+        GRANT ALL PRIVILEGES ON DATABASE alx_travel_app TO alx_user;
     
-    *   GET /api/properties/: List all properties (anyone).
-        
-    *   POST /api/properties/: Create a new property (authenticated, host becomes owner).
-        
-    *   GET /api/properties/{id}/: Retrieve a specific property (anyone).
-        
-    *   PUT /api/properties/{id}/, PATCH /api/properties/{id}/: Update property (authenticated, only owner).
-        
-    *   DELETE /api/properties/{id}/: Delete property (authenticated, only owner).
-        
+*   Configure your database settings in alx\_travel\_app/alx\_travel\_app/settings.py:
     
-*   **Bookings:** (/api/bookings/)
+    codePython
     
-    *   GET /api/bookings/: List user's bookings (authenticated: as guest or host of property).
-        
-    *   POST /api/bookings/: Create a new booking (authenticated, guest is current user).
-        
-    *   GET /api/bookings/{id}/: Retrieve specific booking (authenticated: guest or host of property).
-        
-    *   PUT /api/bookings/{id}/, PATCH /api/bookings/{id}/: Update booking (authenticated, only guest who created it).
-        
-    *   DELETE /api/bookings/{id}/: Delete booking (authenticated, only guest who created it).
-        
-    
-*   **Payments:** (/api/payments/)
-    
-    *   GET /api/payments/: List payments (authenticated: related to user's bookings/properties).
-        
-    *   POST /api/payments/: Create payment (authenticated).
-        
-    *   GET /api/payments/{id}/: Retrieve specific payment (authenticated).
-        
-    *   PUT /api/payments/{id}/, PATCH /api/payments/{id}/, DELETE /api/payments/{id}/: Update/Delete payments (authenticated, only admin).
-        
-    
-*   **Reviews:** (/api/reviews/)
-    
-    *   GET /api/reviews/: List all reviews (anyone).
-        
-    *   POST /api/reviews/: Create a new review (authenticated).
-        
-    *   GET /api/reviews/{id}/: Retrieve specific review (anyone).
-        
-    *   PUT /api/reviews/{id}/, PATCH /api/reviews/{id}/: Update review (authenticated, only author).
-        
-    *   DELETE /api/reviews/{id}/: Delete review (authenticated, only author).
-        
-    
-*   **Messages:** (/api/messages/)
-    
-    *   GET /api/messages/: List messages (authenticated: sent by or received by user).
-        
-    *   POST /api/messages/: Send a message (authenticated).
-        
-    *   GET /api/messages/{id}/: Retrieve specific message (authenticated: sent by or received by user).
-        
-    *   PUT /api/messages/{id}/, PATCH /api/messages/{id}/: Update message (authenticated, only sender).
-        
-    *   DELETE /api/messages/{id}/: Delete message (authenticated, only sender).
-        
-    
-*   **Message History:** (/api/message-history/)
-    
-    *   GET /api/message-history/: List message history (authenticated: related to user's messages).
-        
-    *   GET /api/message-history/{id}/: Retrieve specific history entry (authenticated).
-        
-    
-*   **Notifications:** (/api/notifications/)
-    
-    *   GET /api/notifications/: List user's notifications (authenticated).
-        
-    *   GET /api/notifications/{id}/: Retrieve specific notification (authenticated).
-        
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': 'alx_travel_app',
+                'USER': 'alx_user',
+                'PASSWORD': 'your_password',
+                'HOST': 'localhost', # Or your database host
+                'PORT': '5432',
+            }
+        }
     
 
-## Testing Endpoints (Postman Collection)
+### 5\. Chapa API Credentials
 
-A Postman Collection is provided to facilitate testing of all API endpoints.
+*   **Create a Chapa Account:**  
+    Go to [https://developer.chapa.co/](https://www.google.com/url?sa=E&q=https%3A%2F%2Fdeveloper.chapa.co%2F) and sign up. You will get access to your **Test Secret Key** from your dashboard (usually under settings or API keys). It typically starts with sk\_test\_.
+    
+*   **Create**   
+    In the root of your alx\_travel\_app\_0x02/alx\_travel\_app/ directory (where manage.py is), create a file named .env.
+    
+*   **Add your Secret Key:**
+    
+    codeCode
+    
+        CHAPA_SECRET_KEY="sk_test_YOUR_CHAPA_TEST_SECRET_KEY"
+    
+    **Important:** Ensure .env is listed in your .gitignore file to prevent committing sensitive information to your repository.
+    
 
-*   **Import:** Import the post\_man-Collections file into Postman.
+### 6\. Run Database Migrations
+
+Apply the database schema changes, including the updated Payment model:
+
+
+
+    python manage.py makemigrations
+    python manage.py migrate
+
+### 7\. Create a Superuser (Optional, for Admin Access)
+
+
+
+    python manage.py createsuperuser
+
+Follow the prompts to create an admin user for accessing the Django admin panel.
+
+### 8\. Start Redis Server
+
+Ensure your Redis server is running.
+
+*   **On Linux (Ubuntu/Debian):** sudo systemctl start redis-server or redis-server
     
-*   **Configure Variables:**
+*   **On macOS (Homebrew):** brew services start redis or redis-server
     
-    *   Open the Collection's "Variables" tab.
+*   **On Windows:** Follow Redis installation guides for Windows.
+    
+
+### 9\. Start Celery Worker
+
+In a **separate terminal window** from your Django server, navigate to the project root (alx\_travel\_app\_0x02/) and start the Celery worker:
+
+
+
+    celery -A alx_travel_app worker -l info
+
+This worker will process background tasks like sending payment confirmation emails. Keep this terminal open while testing.
+
+### 10\. Start Django Development Server
+
+In your main terminal window, start the Django server:
+
+
+
+    python manage.py runserver
+
+The API will now be accessible at http://127.0.0.1:8000/.
+
+## API Endpoints
+
+The API is self-documented using drf-spectacular. You can explore all endpoints and their schemas via:
+
+*   **Swagger UI:** http://127.0.0.1:8000/api/docs/
+    
+*   **Redoc:** http://127.0.0.1:8000/api/redoc/
+    
+*   **OpenAPI Schema:** http://127.0.0.1:8000/api/schema/
+    
+
+### Key Endpoints for Chapa Integration
+
+*   **POST /api/payments/chapa/initiate/**
+    
+    *   **Description:** Initiates a payment process with the Chapa gateway for a specific booking.
         
-    *   Update username and password values within the "Login" request bodies to match your actual Django users (admin, host, guest).
+    *   **Authentication:** Required (User must be authenticated).
+        
+    *   **Request Body (JSON):**
+        
+        
+        
+            {
+                "booking_id": "string (UUID of the booking)",
+                "amount": "decimal (total price of the booking)"
+            }
+        
+    *   **Response (JSON):**
+
+            {
+                "status": "success",
+                "checkout_url": "https://api.chapa.co/v1/hosted/checkout/...",
+                "tx_ref": "your-internal-transaction-reference"
+            }
+        
+        The checkout\_url should be used to redirect the user's browser.
         
     
-*   **Run in Order:** Execute requests sequentially. JWT tokens and UUIDs for created resources (listings, bookings) are automatically set as collection variables for subsequent requests.
+*   **GET /api/payments/chapa/verify/{tx\_ref}/**
+    
+    *   **Description:** This is the callback URL provided to Chapa during initiation. Chapa redirects the user's browser to this endpoint after payment completion (success or failure). This endpoint verifies the payment status directly with Chapa's API and updates the internal payment and booking records.
+        
+    *   **Authentication:** Not strictly required by Chapa for the redirect, but the view performs internal authentication checks for safety if the user is logged in.
+        
+    *   **Parameters:** tx\_ref (path parameter, your unique transaction reference).
+        
+    *   **Response:** Redirects to /payment-success/ or /payment-fail/ after processing.
+        
     
 
-## Custom Middleware (Advanced)
+## Payment Workflow
 
-(This section is included if the checker looks for the specific middleware tasks from previous iterations in this new project, though typical API projects might not include all of them).
-
-*   **RequestLoggingMiddleware:** Logs request details (timestamp, user, path) to requests.log.
+*   **Create Booking:** A user creates a booking via POST /api/bookings/. The booking status is initially pending.
     
-*   **RestrictAccessByTimeMiddleware:** Restricts access to API during specific hours (e.g., 6 PM - 9 PM UTC).
+*   **Initiate Payment:** The frontend (after booking creation) makes a POST request to http://127.0.0.1:8000/api/payments/chapa/initiate/ with the booking\_id and amount.
     
-*   **OffensiveLanguageMiddleware (Rate Limiter):** Limits message creation requests (5 per minute per IP).
+*   **Redirect to Chapa:** The backend returns Chapa's checkout\_url. The frontend redirects the user's browser to this URL.
     
-*   **RolePermissionMiddleware:** Enforces admin-only access for specific actions (e.g., deleting conversations).
+*   **User Pays on Chapa's Site:** The user enters their payment details on Chapa's secure hosted page.
+    
+*   **Chapa Callback & Verification:** Chapa redirects the user's browser back to http://127.0.0.1:8000/api/payments/chapa/verify/{tx\_ref}/.
+    
+    *   Your backend verifies the transaction's definitive status with Chapa's API.
+        
+    *   The Payment record's status is updated (e.g., COMPLETED, FAILED).
+        
+    *   If successful, the associated Booking status is updated to CONFIRMED.
+        
+    *   A Celery task is dispatched to send a confirmation email.
+        
+    
+*   **User Lands on Status Page:** The user is redirected to a success or failure page on your application (e.g., /payment-success/ or /payment-fail/).
     
 
-These middlewares are configured in alx\_travel\_app/settings.py.
+## Testing Chapa Payment Integration (Sandbox)
 
-* * *
+To fully test the payment flow, you'll use Chapa's sandbox environment.
 
+*   **Ensure all servers are running:** Django server, Redis server, and Celery worker.
+    
+*   **Obtain Test API Key:** Make sure your CHAPA\_SECRET\_KEY in .env is your **test** secret key from Chapa's developer dashboard.
+    
+*   **Create Test Data:**
+    
+    *   Create a User (e.g., via createsuperuser or your registration API).
+        
+    *   Create a Property (via admin or API).
+        
+    *   Create a Booking for the User and Property (e.g., POST to /api/bookings/). Note the booking\_id and total\_price.
+        
+    
+*   **Initiate Payment:**
+    
+    *   Using a tool like Postman, Insomnia, or a simple curl command, make a POST request to http://127.0.0.1:8000/api/payments/chapa/initiate/.
+        
+    *   **Headers:** Include Authorization: Bearer YOUR\_JWT\_TOKEN (get a token from /api/token/).
+        
+    *   **Body (JSON):**
+        
+    
+        
+            {
+                "booking_id": "THE_UUID_OF_YOUR_TEST_BOOKING",
+                "amount": 123.45 # Make sure this matches your booking's total_price
+            }
+        
+    
+*   **Redirect to Chapa:**
+    
+    *   From the response of the initiate call, copy the checkout\_url.
+        
+    *   Paste this URL into your web browser. You will be redirected to Chapa's sandbox payment page.
+        
+    
+*   **Complete Payment on Chapa:**
+    
+    *   Follow the instructions on Chapa's sandbox page. Use the provided test card numbers (often generic like "4444...4444" or specific ones detailed in Chapa's docs) and any dummy details.
+        
+    
+*   **Observe Results:**
+    
+    *   **Browser:** After payment, your browser should redirect back to your Django app (e.g., http://127.0.0.1:8000/payment-success/).
+        
+    *   **Django Server Console:** You should see DEBUG logs from initiate\_chapa\_payment and verify\_chapa\_payment indicating the API calls and status updates.
+        
+    *   **Celery Worker Console:** If the payment was successful, you should see the DEBUG message from the send\_payment\_confirmation\_email task.
+        
+    *   **Django Admin:** Log in to http://127.0.0.1:8000/admin/.
+        
+        *   Navigate to Listings -> Payments. Find your payment record; its status should be COMPLETED and chapa\_transaction\_id populated.
+            
+        *   Navigate to Listings -> Bookings. The associated booking's status should be confirmed.
+            
+        
+    
+
+
+## Future Improvements / Considerations
+
+*   **Webhooks:** For truly robust payment processing, consider implementing Chapa webhooks in addition to the redirect-based verification. Webhooks allow Chapa to notify your server directly and asynchronously about payment status changes, making your system more resilient to user browser issues.
+    
+*   **Frontend Integration:** Develop a user-friendly frontend (e.g., with React, Vue, or simple Django templates) that smoothly handles the payment redirection and displays appropriate success/failure messages.
+    
+*   **Detailed Error Messages:** Enhance error handling to provide more specific and actionable messages to users and for debugging.
+    
+*   **Refunds/Cancellations:** Implement API endpoints and logic for handling refunds or cancellations of payments.
+    
+*   **Payment History:** Develop richer views/reporting for users and administrators to track payment history.
+    
+*   **Concurrency & Locking:** For high-volume applications, consider database transaction locking to prevent race conditions during payment status updates.
