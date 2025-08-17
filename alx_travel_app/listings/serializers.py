@@ -198,14 +198,14 @@ class PaymentSerializer(serializers.ModelSerializer):
     )
 
     # New fields
-    chapa_transaction_id = serializers.ChoiceField(
+    chapa_transaction_id = serializers.CharField(
         read_only=True,
         help_text="Chapa's unique transaction id (read-only)."
     )
-    status = serializers.CharField(
-        choice=Payment.ChapaPaymentStatusChoices.choices,
-        read_only=True,
-        help_text="The status of the payment (PENDING, COMPLETE, FAILED, REJECTED)."
+    status = serializers.ChoiceField(
+        choices=Payment.ChapaPaymentStatusChoices.choices,
+        read_only=True, # Status is updated by the system based on Chapa responses
+        help_text="The status of the payment (PENDING, COMPLETED, FAILED, etc.)."
     )
     chapa_status_text = serializers.CharField(
         read_only=True,
